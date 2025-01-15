@@ -2130,10 +2130,6 @@ static int chunk_call_munmap(mstate m, mchunkptr p, size_t size) {
   return res;
 }
 
-#if defined(ANDROID) || defined(__ANDROID__)
-pid_t gettid() { return syscall(SYS_gettid); }
-#endif
-
 static void* mmap_alloc(mstate m, size_t nb) {
   size_t mmsize = mmap_align(nb + SIX_SIZE_T_SIZES + CHUNK_ALIGN_MASK);
   if (m->footprint_limit != 0) {
@@ -2416,7 +2412,7 @@ static void* sys_alloc(mstate m, size_t nb) {
     sprintf(id, "%d", getpid());
     strcat(m->mem_name, id);
     strcat(m->mem_name, "_");
-    sprintf(id, "%d", gettid());
+    sprintf(id, "%d", (int)syscall(SYS_gettid));
     strcat(m->mem_name, id);
 #endif
   } else {
@@ -2849,7 +2845,8 @@ postaction:
 }
 
 void gcfree(mstate fm, void* mem) {
-  PRINT("gcfree, addr:%p, mstate:%p, tid:%d\n", mem, fm, gettid());
+  PRINT("gcfree, addr:%p, mstate:%p, tid:%d\n", mem, fm,
+        (int)syscall(SYS_gettid));
 #ifdef ENABLE_GC_DEBUG_TOOLS
   delete_cur_mems(fm->runtime, mem);
 #endif

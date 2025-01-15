@@ -789,10 +789,11 @@ struct LEPUSContext {
 
   PtrHandles *ptr_handles;
   NAPIHandleScope *napi_scope;
+  struct FinalizationRegistryContext *fg_ctx = nullptr;
+  uint64_t binary_version;
   bool gc_enable;
   bool is_lepusng;
-  uint64_t binary_version;
-  struct FinalizationRegistryContext *fg_ctx = nullptr;
+  bool object_ctx_check;
 };
 
 typedef union JSFloat64Union {
@@ -973,6 +974,12 @@ typedef struct LEPUSFunctionBytecode {
   // <Primjs begin>
   struct list_head gc_link;
   uint32_t function_id;  // for lepusNG debugger encode
+#ifdef ENABLE_QUICKJS_DEBUGGER
+  LEPUSContext *ctx;
+#if defined(ANDROID) || defined(__ANDROID__)
+  pid_t tid;
+#endif
+#endif
   // <Primjs end>
   struct {
     /* debug info, move to separate structure to save memory? */
@@ -1346,6 +1353,12 @@ struct LEPUSObject {
     JSRegExp regexp;        /* JS_CLASS_REGEXP: 8/16 bytes */
     LEPUSValue object_data; /* for JS_SetObjectData(): 8/16/16 bytes */
   } u;
+#ifdef ENABLE_QUICKJS_DEBUGGER
+  LEPUSContext *ctx;
+#if defined(ANDROID) || defined(__ANDROID__)
+  pid_t tid;
+#endif
+#endif
   /* byte sizes: 40/48/72 */
 };
 
@@ -3200,5 +3213,13 @@ inline bool js_is_bytecode_function(LEPUSValue obj) {
 
 bool emit_name_str(JSParseState *s, const uint8_t *start, const uint8_t *end);
 void get_caller_string(JSFunctionDef *s);
+
+void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable);
+
+#ifdef ENABLE_QUICKJS_DEBUGGER
+QJS_HIDE pid_t get_tid();
+QJS_HIDE bool CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj);
+QJS_HIDE LEPUSValue JS_ThrowCtxError(LEPUSContext *ctx);
+#endif
 
 #endif  // SRC_INTERPRETER_QUICKJS_INCLUDE_QUICKJS_INNER_H_

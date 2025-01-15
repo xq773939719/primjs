@@ -56,6 +56,7 @@ extern "C" {
 #include <cstdlib>
 #if defined(ANDROID) || defined(__ANDROID__)
 #include <errno.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #endif
 
@@ -4585,6 +4586,12 @@ QJS_HIDE LEPUSValue JS_NewObjectFromShape(LEPUSContext *ctx, JSShape *sh,
   p->first_weak_ref = NULL;
   p->u.opaque = NULL;
   p->shape = sh;
+#ifdef ENABLE_QUICKJS_DEBUGGER
+  p->ctx = ctx;
+#if defined(ANDROID) || defined(__ANDROID__)
+  p->tid = get_tid();
+#endif
+#endif
   p->prop = static_cast<JSProperty *>(
       lepus_malloc(ctx, sizeof(JSProperty) * sh->prop_size));
   if (unlikely(!p->prop)) {
@@ -8838,6 +8845,14 @@ int JS_SetPropertyInternalImpl(LEPUSContext *ctx, LEPUSValueConst this_obj,
     }
   }
   p = LEPUS_VALUE_GET_OBJ(this_obj);
+
+#ifdef ENABLE_QUICKJS_DEBUGGER
+  if (CheckObjectCtx(ctx, val)) {
+    JS_ThrowCtxError(ctx);
+    return -1;
+  }
+#endif
+
 retry:
   prs = find_own_property(&pr, p, prop);
   if (prs) {
@@ -18489,6 +18504,12 @@ QJS_STATIC inline LEPUSValue JS_CallInternalTI(LEPUSContext *caller_ctx,
                                                LEPUSValue this_obj,
                                                LEPUSValue new_target, int argc,
                                                LEPUSValue *argv, int flags) {
+#ifdef ENABLE_QUICKJS_DEBUGGER
+  if (CheckObjectCtx(caller_ctx, func_obj)) {
+    return JS_ThrowCtxError(caller_ctx);
+  }
+#endif
+
 #ifdef ENABLE_PRIMJS_SNAPSHOT
   if (caller_ctx->rt->use_primjs) {
     return entry(this_obj, new_target, func_obj, (address)caller_ctx, argc,
@@ -31525,6 +31546,12 @@ LEPUSValue js_create_function(LEPUSContext *ctx, JSFunctionDef *fd) {
   }
 
   b->stack_size = stack_size;
+#ifdef ENABLE_QUICKJS_DEBUGGER
+  b->ctx = ctx;
+#if defined(ANDROID) || defined(__ANDROID__)
+  b->tid = get_tid();
+#endif
+#endif
 
   if (fd->js_mode & JS_MODE_STRIP) {
     if (!is_gc) {
@@ -56074,3 +56101,46 @@ void InitLynxTraceEnv(void *(*begin)(const char *), void (*end)(void *ptr)) {
   lynx_trace.InitEndPtr(end);
   return;
 }
+
+void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable) {
+  ctx->object_ctx_check = enable;
+  return;
+}
+
+#ifdef ENABLE_QUICKJS_DEBUGGER
+pid_t get_tid() {
+#if defined(ANDROID) || defined(__ANDROID__)
+  return syscall(SYS_gettid);
+#else
+  return 0;
+#endif
+}
+
+bool CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj) {
+  if (ctx->object_ctx_check) {
+    bool inconsistent_ctx =
+        (LEPUS_VALUE_IS_OBJECT(obj) &&
+         (LEPUS_VALUE_GET_OBJ(obj)->ctx) != ctx) ||
+        (LEPUS_VALUE_IS_FUNCTION_BYTECODE(obj) &&
+         static_cast<LEPUSFunctionBytecode *>(LEPUS_VALUE_GET_PTR(obj))->ctx !=
+             ctx);
+    bool inconsistent_tid = false;
+#if defined(ANDROID) || defined(__ANDROID__)
+    pid_t tid = get_tid();
+    inconsistent_tid =
+        (LEPUS_VALUE_IS_OBJECT(obj) &&
+         (LEPUS_VALUE_GET_OBJ(obj)->tid) != tid) ||
+        (LEPUS_VALUE_IS_FUNCTION_BYTECODE(obj) &&
+         static_cast<LEPUSFunctionBytecode *>(LEPUS_VALUE_GET_PTR(obj))->tid !=
+             tid);
+#endif
+    return inconsistent_ctx || inconsistent_tid;
+  }
+  return false;
+}
+
+LEPUSValue JS_ThrowCtxError(LEPUSContext *ctx) {
+  return LEPUS_ThrowTypeError(
+      ctx, "The property's ctx or tid is inconsistent with this object.");
+}
+#endif

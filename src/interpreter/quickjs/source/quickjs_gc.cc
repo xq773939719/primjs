@@ -2691,6 +2691,12 @@ QJS_HIDE LEPUSValue JS_NewObjectFromShape_GC(LEPUSContext *ctx, JSShape *sh,
   p->u.opaque = NULL;
   p->shape = sh;
   p->prop = NULL;
+#ifdef ENABLE_QUICKJS_DEBUGGER
+  p->ctx = ctx;
+#if defined(ANDROID) || defined(__ANDROID__)
+  p->tid = get_tid();
+#endif
+#endif
 
   switch (class_id) {
     case JS_CLASS_OBJECT:
@@ -4784,6 +4790,14 @@ int JS_SetPropertyInternalImpl_GC(LEPUSContext *ctx, LEPUSValueConst this_obj,
     }
   }
   p = LEPUS_VALUE_GET_OBJ(this_obj);
+
+#ifdef ENABLE_QUICKJS_DEBUGGER
+  if (CheckObjectCtx(ctx, val)) {
+    JS_ThrowCtxError(ctx);
+    return -1;
+  }
+#endif
+
 retry:
   prs = find_own_property(&pr, p, prop);
   if (prs) {

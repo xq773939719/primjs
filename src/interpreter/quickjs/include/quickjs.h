@@ -1603,6 +1603,8 @@ const char *LEPUS_GetStringUtf8(LEPUSContext *, const struct JSString *);
 void LEPUS_SetFuncFileName(LEPUSContext *, LEPUSValue, const char *);
 
 void InitLynxTraceEnv(void *(*)(const char *), void (*)(void *));
+
+void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable);
 // <Primjs end>
 
 #undef lepus_unlikely

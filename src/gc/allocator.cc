@@ -2877,13 +2877,12 @@ void gcfree(mstate fm, void* mem) {
             set_free_with_pinuse(p, psize, next);
             goto postaction;
           }
-        } else
+        } else {
 #if defined(ANDROID) || defined(__ANDROID__)
           __android_log_print(ANDROID_LOG_FATAL, "PRIMJS_ALLOCATE",
                               "bottom of the MORECORE!");
-#else
-          abort();
 #endif
+        }
       }
     }
 

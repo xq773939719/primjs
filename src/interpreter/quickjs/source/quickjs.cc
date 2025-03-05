@@ -1874,6 +1874,7 @@ LEPUSContext *LEPUS_NewContextRaw(LEPUSRuntime *rt) {
 
   ctx = static_cast<LEPUSContext *>(lepus_mallocz_rt(rt, sizeof(LEPUSContext)));
   if (!ctx) return NULL;
+  ctx->ptr_handles = rt->ptr_handles;
   ctx->class_proto = static_cast<LEPUSValue *>(
       lepus_malloc_rt(rt, sizeof(ctx->class_proto[0]) * rt->class_count));
   if (!ctx->class_proto) {
@@ -1962,7 +1963,6 @@ LEPUSContext *LEPUS_NewContext(LEPUSRuntime *rt) {
   ctx = LEPUS_NewContextRaw(rt);
   if (!ctx) return NULL;
 
-  ctx->ptr_handles = rt->ptr_handles;
   ctx->napi_scope = NULL;
 
   LEPUS_AddIntrinsicBaseObjects(ctx);

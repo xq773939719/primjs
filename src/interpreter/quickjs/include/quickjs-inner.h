@@ -2696,7 +2696,7 @@ QJS_HIDE LEPUSValue js_closure2(LEPUSContext *ctx, LEPUSValue func_obj,
 QJS_HIDE void js_random_init(LEPUSContext *ctx);
 QJS_HIDE LEPUSValue js_math_random(LEPUSContext *ctx, LEPUSValueConst this_val,
                                    int argc, LEPUSValueConst *argv);
-QJS_HIDE int getTimezoneOffset(int64_t time);
+QJS_HIDE int getTimezoneOffset(int64_t time, int dst_mode = 0);
 QJS_HIDE int JS_SetPrototypeInternal_GC(LEPUSContext *ctx, LEPUSValueConst obj,
                                         LEPUSValueConst proto_val,
                                         BOOL throw_flag);

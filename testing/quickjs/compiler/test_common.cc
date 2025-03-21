@@ -22,7 +22,7 @@ extern "C" {
 #endif
 
 int32_t typed_array_is_detached(LEPUSContext*, LEPUSObject*);
-double set_date_fields(double[], int);
+double set_date_fields(double[], int, int);
 
 namespace common_qjs_test {
 LEPUSValue js_deep_copy(LEPUSContext* ctx, LEPUSValueConst this_val, int argc,
@@ -1239,7 +1239,7 @@ TEST_F(CommonQjsTest, TypedArraySliceMemOverlap) {
 
 TEST_F(CommonQjsTest, TestDateUtc) {
   double fields[] = {1970, 0, 213503982336, 0, 0, 0, -18446744073709552000.0};
-  auto ret = set_date_fields(fields, 0);
+  auto ret = set_date_fields(fields, 0, 0);
   ASSERT_EQ(ret, 34447360);
 }
 

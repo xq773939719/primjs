@@ -27102,7 +27102,7 @@ static double time_clip(double t) {
     return LEPUS_FLOAT64_NAN;
 }
 
-static double set_date_fields(double fields[], int is_local) {
+static double set_date_fields(double fields[], int is_local, int dst_mode = 0) {
   int64_t y;
   double days, h, m1;
   volatile double d;
@@ -27123,7 +27123,7 @@ static double set_date_fields(double fields[], int is_local) {
   h = fields[3] * 3600000 + fields[4] * 60000 + fields[5] * 1000 + fields[6];
   d = days * 86400000;
   d += h;
-  if (is_local) d += getTimezoneOffset(d) * 60000;
+  if (is_local) d += getTimezoneOffset(d, dst_mode) * 60000;
   return time_clip(d);
 }
 
@@ -27476,6 +27476,9 @@ static LEPUSValue js_Date_parse(LEPUSContext *ctx, LEPUSValueConst this_val,
 
   rv = LEPUS_NAN;
   HandleScope func_scope(ctx, &rv, HANDLE_TYPE_LEPUS_VALUE);
+  struct tm info {};
+  time_t t;
+  int dst_mode = 0;
 
   s = JS_ToString_GC(ctx, argv[0]);
   if (LEPUS_IsException(s)) return LEPUS_EXCEPTION;
@@ -27560,7 +27563,15 @@ static LEPUSValue js_Date_parse(LEPUSContext *ctx, LEPUSValueConst this_val,
     }
   }
   for (i = 0; i < 7; i++) fields1[i] = fields[i];
-  d = set_date_fields(fields1, is_local) - tz * 60000;
+  info.tm_year = fields[0] - 1900;
+  info.tm_mon = fields[1];
+  info.tm_mday = fields[2];
+  info.tm_hour = fields[3];
+  info.tm_min = 0;
+  info.tm_isdst = 1;
+  t = mktime(&info);
+  dst_mode = info.tm_isdst == 1 ? 1 : 2;  // 1: dst, 2: no dst
+  d = set_date_fields(fields1, is_local, dst_mode) - tz * 60000;
   rv = __JS_NewFloat64(ctx, d);
 
 done:

@@ -17,8 +17,8 @@
 LEPUSValue js_closure(LEPUSContext* ctx, LEPUSValue bfunc,
                       struct JSVarRef** cur_var_refs, LEPUSStackFrame* sf);
 bool IsBreakpointEqual(LEPUSContext* ctx, LEPUSBreakpoint* a, int32_t script_id,
-                       int32_t line_number, int64_t column_number,
-                       LEPUSValue condition_b);
+                       const char* script_url, int32_t line_number,
+                       int64_t column_number, LEPUSValue condition_b);
 LEPUSBreakpoint* AddBreakpoint(LEPUSDebuggerInfo* info, const char* url,
                                const char* hash, int32_t line_number,
                                int64_t column_number, int32_t script_id,
@@ -1648,25 +1648,31 @@ TEST_F(QjsDebugMethods, TestBreakpointsEqual) {
   LEPUSBreakpoint* new_breakpoint =
       AddBreakpoint(info, "test_breakpoint.js", NULL, 12, 0, 1, "", 0);
   LEPUSValue condition = LEPUS_NULL;
-  bool res = IsBreakpointEqual(ctx_, new_breakpoint, 1, 12, 0, condition);
+  bool res = IsBreakpointEqual(ctx_, new_breakpoint, 1, "test_breakpoint.js",
+                               12, 0, condition);
   ASSERT_TRUE(res == true);
 
-  res = IsBreakpointEqual(ctx_, new_breakpoint, -1, 12, 0, LEPUS_NULL);
+  res = IsBreakpointEqual(ctx_, new_breakpoint, -1, "test_breakpoint.js", 12, 0,
+                          LEPUS_NULL);
   ASSERT_TRUE(res == false);
 
-  res = IsBreakpointEqual(ctx_, new_breakpoint, 1, 1, 0, LEPUS_NULL);
+  res = IsBreakpointEqual(ctx_, new_breakpoint, 1, "test_breakpoint.js", 1, 0,
+                          LEPUS_NULL);
   ASSERT_TRUE(res == false);
 
-  res = IsBreakpointEqual(ctx_, new_breakpoint, 1, 12, 2, LEPUS_NULL);
+  res = IsBreakpointEqual(ctx_, new_breakpoint, 1, "test_breakpoint.js", 12, 2,
+                          LEPUS_NULL);
   ASSERT_TRUE(res == false);
 
   condition = LEPUS_NewString(ctx_, "a == 1");
-  res = IsBreakpointEqual(ctx_, new_breakpoint, 1, 12, 2, condition);
+  res = IsBreakpointEqual(ctx_, new_breakpoint, 1, "test_breakpoint.js", 12, 2,
+                          condition);
   ASSERT_TRUE(res == false);
 
   LEPUSBreakpoint* new_breakpoint2 =
       AddBreakpoint(info, "test_breakpoint2.js", NULL, 12, 0, 1, "a == 1", 0);
-  res = IsBreakpointEqual(ctx_, new_breakpoint2, 1, 12, 0, condition);
+  res = IsBreakpointEqual(ctx_, new_breakpoint2, 1, "test_breakpoint2.js", 12,
+                          0, condition);
   if (!ctx_->rt->gc_enable) LEPUS_FreeValue(ctx_, condition);
   ASSERT_TRUE(res == true);
 

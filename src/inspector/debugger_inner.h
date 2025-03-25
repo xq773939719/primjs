@@ -229,7 +229,6 @@ QJS_HIDE void AddFunctionBytecode(LEPUSContext *ctx, LEPUSValue obj,
                                   LEPUSFunctionBytecode **&list,
                                   uint32_t *use_size, uint32_t &total_size);
 QJS_HIDE void DecreaseBpNum(LEPUSContext *ctx, LEPUSFunctionBytecode *b);
-QJS_HIDE void RegisterLynxConsole(LEPUSContext *ctx);
 
 class PCScope {
  public:

@@ -53,6 +53,7 @@ void HandleEvaluateOnCallFrame(DebuggerParams *);
 LEPUSValue BuildBacktrace(LEPUSContext *ctx, const uint8_t *cur_pc);
 
 // when console.xxx is called, use this function to get stack trace
-LEPUSValue BuildConsoleBacktrace(LEPUSContext *ctx, const uint8_t *cur_pc);
+LEPUSValue BuildConsoleBacktrace(LEPUSContext *ctx, const uint8_t *cur_pc,
+                                 LEPUSValue *stack_trace);
 
 #endif  // SRC_INSPECTOR_DEBUGGER_DEBUGGER_CALLFRAME_H_

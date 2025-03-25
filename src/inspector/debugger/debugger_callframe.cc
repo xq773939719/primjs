@@ -358,12 +358,13 @@ void FrameThisObj(LEPUSContext *ctx, LEPUSValue current_frame,
 
 void GetConsoleStackTrace(LEPUSContext *ctx, LEPUSValue *ret) {
   LEPUSValue callframes =
-      BuildConsoleBacktrace(ctx, ctx->debugger_info->debugger_current_pc);
+      BuildConsoleBacktrace(ctx, ctx->debugger_info->debugger_current_pc, ret);
   HandleScope func_scope(ctx, &callframes, HANDLE_TYPE_LEPUS_VALUE);
   DebuggerSetPropertyStr(ctx, *ret, "callFrames", callframes);
 }
 
-LEPUSValue BuildConsoleBacktrace(LEPUSContext *ctx, const uint8_t *cur_pc) {
+LEPUSValue BuildConsoleBacktrace(LEPUSContext *ctx, const uint8_t *cur_pc,
+                                 LEPUSValue *stack_trace) {
   // get call frame array
   struct LEPUSStackFrame *stack_frame = NULL;
   LEPUSValue ret = LEPUS_NewArray(ctx);
@@ -399,6 +400,10 @@ LEPUSValue BuildConsoleBacktrace(LEPUSContext *ctx, const uint8_t *cur_pc) {
     DebuggerSetPropertyStr(ctx, current_frame, "scriptId",
                            LEPUS_GetPropertyStr(ctx, location, "scriptId"));
     if (!ctx->rt->gc_enable) LEPUS_FreeValue(ctx, location);
+    if (frame_id == 0) {
+      DebuggerSetPropertyStr(ctx, *stack_trace, "url",
+                             LEPUS_GetPropertyStr(ctx, current_frame, "url"));
+    }
     LEPUS_SetPropertyUint32(ctx, ret, frame_id++, current_frame);
   }
   return ret;

@@ -1045,46 +1045,8 @@ static void InitializeStringPool(LEPUSDebuggerInfo *info) {
 }
 
 QJS_STATIC void OnConsoleMessageInspect(LEPUSContext *, LEPUSValue);
-QJS_STATIC void GetConsoleMessageRIDOrGroupID(LEPUSContext *ctx, LEPUSValue val,
-                                              int32_t &rid, char *&gid,
-                                              int32_t &lepus_id) {
-  const char *first_arg = LEPUS_ToCStringLen2(ctx, NULL, val, 0);
-  HandleScope func_scope{ctx, &first_arg, HANDLE_TYPE_CSTRING};
-  const char *console_tag[] = {"runtimeId:", "groupId:", "lepusRuntimeId:"};
-  if (first_arg) {
-    const char *rid_head = console_tag[0];
-    size_t rid_head_len = strlen(rid_head);
-    if (strncmp(first_arg, rid_head, rid_head_len) == 0) {
-      const char *view_id_str = first_arg + rid_head_len;
-      if (view_id_str) {
-        rid = atoi(view_id_str);
-      }
-    } else {
-      const char *gid_head = console_tag[1];
-      size_t gid_head_len = strlen(gid_head);
-      if (strncmp(first_arg, gid_head, gid_head_len) == 0) {
-        gid = static_cast<char *>(
-            lepus_malloc(ctx, strlen(first_arg) - gid_head_len + 1,
-                         ALLOC_TAG_WITHOUT_PTR));  // need to be freed
-        strcpy(gid, first_arg + gid_head_len);
-      } else {
-        const char *lepus_head = console_tag[2];
-        size_t lepus_head_len = strlen(lepus_head);
-        if (strncmp(first_arg, lepus_head, lepus_head_len) == 0) {
-          const char *lepus_id_str = first_arg + lepus_head_len;
-          if (lepus_id_str) {
-            lepus_id = atoi(lepus_id_str);
-          }
-        }
-      }
-    }
-  }
-  if (!ctx->rt->gc_enable) LEPUS_FreeCString(ctx, first_arg);
-}
-
 QJS_STATIC void CommonLog(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
-                          LEPUSValueConst *argv, int magic,
-                          bool is_lynx_console = false) {
+                          LEPUSValueConst *argv, int magic) {
   auto *debugger_info = ctx->debugger_info;
   if (!debugger_info || LEPUS_IsNull(debugger_info->console.messages)) return;
   const char *tag_table[] = {"log", "info", "debug", "error", "warning", "log",
@@ -1093,25 +1055,13 @@ QJS_STATIC void CommonLog(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
   if (*tag == '\0') return;
   LEPUSValue console_msg = LEPUS_NewArray(ctx);
   HandleScope func_scope{ctx, &console_msg, HANDLE_TYPE_LEPUS_VALUE};
-  int32_t rid = -1;
   char *gid = nullptr;
-  int32_t lepus_id = -1;
   int argc_idx;
   int real_param = 0;
   func_scope.PushHandle(&gid, HANDLE_TYPE_HEAP_OBJ);
   for (argc_idx = 0; argc_idx < argc; argc_idx++) {
-    if (argc_idx == 0 && is_lynx_console) {
-      GetConsoleMessageRIDOrGroupID(ctx, argv[0], rid, gid,
-                                    lepus_id);  // gid need to be freed
-      if (rid == -1 && !gid && lepus_id == -1) {
-        LEPUS_SetPropertyUint32(ctx, console_msg, real_param++,
-                                LEPUS_DupValue(ctx, argv[argc_idx]));
-      }
-
-    } else {
-      LEPUS_SetPropertyUint32(ctx, console_msg, real_param++,
-                              LEPUS_DupValue(ctx, argv[argc_idx]));
-    }
+    LEPUS_SetPropertyUint32(ctx, console_msg, real_param++,
+                            LEPUS_DupValue(ctx, argv[argc_idx]));
   }
   LEPUSValue str = LEPUS_NewString(ctx, tag);
   func_scope.PushHandle(&str, HANDLE_TYPE_LEPUS_VALUE);
@@ -1124,23 +1074,12 @@ QJS_STATIC void CommonLog(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
     HandleScope block_scope{ctx, &stack_trace, HANDLE_TYPE_LEPUS_VALUE};
     GetConsoleStackTrace(ctx, &stack_trace);
     LEPUS_SetPropertyStr(ctx, console_msg, "stackTrace", stack_trace);
-  }
-  if (is_lynx_console) {
-    if (rid != -1) {
-      LEPUS_SetPropertyStr(ctx, console_msg, "rid", LEPUS_NewInt32(ctx, rid));
-    }
-    if (gid) {
-      str = LEPUS_NewString(ctx, gid);
-      func_scope.PushHandle(&str, HANDLE_TYPE_LEPUS_VALUE);
-      LEPUS_SetPropertyStr(ctx, console_msg, "gid", str);
-      if (!ctx->rt->gc_enable) lepus_free(ctx, gid);
-    }
-    if (lepus_id != -1) {
-      LEPUS_SetPropertyStr(ctx, console_msg, "rid",
-                           LEPUS_NewInt32(ctx, lepus_id));
-      LEPUS_SetPropertyStr(ctx, console_msg, "lepusConsole",
-                           LEPUS_NewBool(ctx, 1));
-    }
+    LEPUS_SetPropertyStr(ctx, console_msg, "url",
+                         LEPUS_GetPropertyStr(ctx, stack_trace, "url"));
+    JSAtom atom = LEPUS_NewAtom(ctx, "url");
+    block_scope.PushLEPUSAtom(atom);
+    LEPUS_DeleteProperty(ctx, stack_trace, atom, 0);
+    if (!ctx->rt->gc_enable) LEPUS_FreeAtom(ctx, atom);
   }
 
   int idx = debugger_info->console.length++;
@@ -1149,9 +1088,7 @@ QJS_STATIC void CommonLog(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
 
   LEPUSRuntime *rt = ctx->rt;
   if (ctx->debugger_info->is_runtime_enabled) {
-    auto cb = is_lynx_console
-                  ? rt->debugger_callbacks_.console_api_called_ntfy_with_rid
-                  : rt->debugger_callbacks_.console_api_called_ntfy;
+    auto cb = rt->debugger_callbacks_.console_api_called_ntfy;
     if (cb) {
       cb(ctx, &console_msg);
     }
@@ -1161,7 +1098,7 @@ QJS_STATIC void CommonLog(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
     console_message_cb(ctx, magic, argv, argc);
   }
 
-  if (is_lynx_console && ctx->console_inspect) {
+  if (ctx->console_inspect) {  // zys_todo
     OnConsoleMessageInspect(ctx, console_msg);
   }
   if (!ctx->rt->gc_enable) LEPUS_FreeValue(ctx, console_msg);
@@ -1174,29 +1111,17 @@ QJS_STATIC LEPUSValue DebuggerLog(LEPUSContext *ctx, LEPUSValueConst this_val,
   return LEPUS_UNDEFINED;
 }
 
-QJS_STATIC LEPUSValue LynxDebuggerLog(LEPUSContext *ctx,
-                                      LEPUSValueConst this_val, int argc,
-                                      LEPUSValueConst *argv, int magic) {
-  CommonLog(ctx, this_val, argc, argv, magic, true);
-  return LEPUS_UNDEFINED;
-}
-
-QJS_HIDE void JS_AddIntrinsicConsole(LEPUSContext *ctx,
-                                     bool is_lynx_console = false) {
+QJS_HIDE void JS_AddIntrinsicConsole(LEPUSContext *ctx) {
   LEPUSValue global = ctx->global_obj;
   LEPUSValue console = LEPUS_NewObject(ctx);
   HandleScope func_scope{ctx, &console, HANDLE_TYPE_LEPUS_VALUE};
-  auto log_func = is_lynx_console ? LynxDebuggerLog : DebuggerLog;
-  if (is_lynx_console) {
-    DebuggerSetPropertyStr(ctx, global, "lynxConsole", console);
-  } else {
-    DebuggerSetPropertyStr(ctx, global, "console", console);
-  }
+  DebuggerSetPropertyStr(ctx, global, "console", console);
   LEPUSValue cfunc = LEPUS_UNDEFINED;
   func_scope.PushHandle(&cfunc, HANDLE_TYPE_LEPUS_VALUE);
 #define RegisterConsole(name, type)                                          \
-  cfunc = LEPUS_NewCFunctionMagic(                                           \
-      ctx, log_func, name, 1, LEPUS_CFUNC_generic_magic, JS_CONSOLE_##type); \
+  cfunc =                                                                    \
+      LEPUS_NewCFunctionMagic(ctx, DebuggerLog, name, 1,                     \
+                              LEPUS_CFUNC_generic_magic, JS_CONSOLE_##type); \
   DebuggerSetPropertyStr(ctx, console, name, cfunc);
   QJSDebuggerRegisterConsole(RegisterConsole)
 #undef RegisterConsole
@@ -1205,20 +1130,6 @@ QJS_HIDE void JS_AddIntrinsicConsole(LEPUSContext *ctx,
     ctx->debugger_info->console.messages = LEPUS_NewArray(ctx);
     ctx->debugger_info->console.length = 0;
   }
-}
-
-QJS_HIDE void RegisterLynxConsole(LEPUSContext *ctx) {
-  // register lynx console
-  LEPUSValue global = ctx->global_obj;
-  LEPUSValue lynx_console = LEPUS_GetPropertyStr(ctx, global, "lynxConsole");
-  if (LEPUS_IsUndefined(lynx_console)) {
-    // for lynxconsole.xxx
-    JS_AddIntrinsicConsole(ctx, true);
-  }
-  if (!ctx->rt->gc_enable) {
-    LEPUS_FreeValue(ctx, lynx_console);
-  }
-  return;
 }
 
 // debugger initialize
@@ -1679,7 +1590,7 @@ void HandlePause(DebuggerParams *debugger_options) {
   }
 }
 
-void DeleteConsoleMessageWithRID(LEPUSContext *ctx, int32_t rid) {
+void DeleteConsoleMessageWithURL(LEPUSContext *ctx, const char *url) {
   LEPUSDebuggerInfo *info = ctx->debugger_info;
   if (!info) {
     return;
@@ -1693,12 +1604,11 @@ void DeleteConsoleMessageWithRID(LEPUSContext *ctx, int32_t rid) {
   for (int32_t i = 0; i < msg_len; i++) {
     LEPUSValue console_message = LEPUS_GetPropertyUint32(ctx, msg, i);
     if (!LEPUS_IsUndefined(console_message)) {
-      LEPUSValue rid_val = LEPUS_GetPropertyStr(ctx, console_message, "rid");
-      if (!LEPUS_IsUndefined(rid_val)) {
-        int32_t each_rid = -1;
-        LEPUS_ToInt32(ctx, &each_rid, rid_val);
-        if (!ctx->rt->gc_enable) LEPUS_FreeValue(ctx, rid_val);
-        if (each_rid != rid) {
+      LEPUSValue url_val = LEPUS_GetPropertyStr(ctx, console_message, "url");
+      if (!LEPUS_IsUndefined(url_val)) {
+        const char *url_str = LEPUS_ToCString(ctx, url_val);
+        if (!ctx->rt->gc_enable) LEPUS_FreeValue(ctx, url_val);
+        if (strcmp(url, url_str) != 0) {
           LEPUS_SetPropertyUint32(ctx, new_msg, new_msg_len++,
                                   LEPUS_DupValue(ctx, console_message));
         }
@@ -1714,7 +1624,7 @@ void DeleteConsoleMessageWithRID(LEPUSContext *ctx, int32_t rid) {
   info->console.length = new_msg_len;
 }
 
-void SendConsoleAPICalled(LEPUSContext *ctx, LEPUSValue *msg, bool has_rid) {
+void SendConsoleAPICalled(LEPUSContext *ctx, LEPUSValue *msg) {
   uint32_t argc = LEPUS_GetLength(ctx, *msg);
   LEPUSValue params = LEPUS_NewObject(ctx);
   HandleScope func_scope(ctx, &params, HANDLE_TYPE_LEPUS_VALUE);
@@ -1732,27 +1642,11 @@ void SendConsoleAPICalled(LEPUSContext *ctx, LEPUSValue *msg, bool has_rid) {
   if (!LEPUS_IsUndefined(stack_trace)) {
     DebuggerSetPropertyStr(ctx, params, "stackTrace", stack_trace);
   }
-
-  int rid = -1;
-  const char *gid = nullptr;
-  bool is_lepus_console = false;
-  if (has_rid) {
-    LEPUSValue rid_val = LEPUS_GetPropertyStr(ctx, *msg, "rid");
-    if (!LEPUS_IsUndefined(rid_val)) {
-      LEPUS_ToInt32(ctx, &rid, rid_val);
-    }
-    LEPUSValue gid_val = LEPUS_GetPropertyStr(ctx, *msg, "gid");
-    if (!LEPUS_IsUndefined(gid_val)) {
-      gid = LEPUS_ToCString(ctx, gid_val);
-      func_scope.PushHandle(reinterpret_cast<void *>(&gid),
-                            HANDLE_TYPE_CSTRING);
-      if (!ctx->rt->gc_enable) LEPUS_FreeValue(ctx, gid_val);
-    }
-    LEPUSValue js_console = LEPUS_GetPropertyStr(ctx, *msg, "lepusConsole");
-    if (!LEPUS_IsUndefined(js_console)) {
-      is_lepus_console = true;
-    }
+  LEPUSValue url = LEPUS_GetPropertyStr(ctx, *msg, "url");
+  if (!LEPUS_IsUndefined(url)) {
+    DebuggerSetPropertyStr(ctx, params, "url", url);
   }
+
   LEPUSValue v2 = LEPUS_UNDEFINED;
   func_scope.PushHandle(&v2, HANDLE_TYPE_LEPUS_VALUE);
   for (int idx = 0; idx < argc; idx++) {
@@ -1760,29 +1654,7 @@ void SendConsoleAPICalled(LEPUSContext *ctx, LEPUSValue *msg, bool has_rid) {
     v2 = GetRemoteObject(ctx, v, 0, 0);  // free v
     LEPUS_SetPropertyUint32(ctx, args, idx, v2);
   }
-  LEPUSValue str = LEPUS_UNDEFINED;
-  func_scope.PushHandle(&str, HANDLE_TYPE_LEPUS_VALUE);
-  if (has_rid) {
-    if (rid != -1) {
-      DebuggerSetPropertyStr(ctx, params, "runtimeId",
-                             LEPUS_NewInt32(ctx, rid));
-    }
-    if (gid) {
-      str = LEPUS_NewString(ctx, gid);
-      DebuggerSetPropertyStr(ctx, params, "groupId", str);
-      if (!ctx->rt->gc_enable) LEPUS_FreeCString(ctx, gid);
-    }
-    if (is_lepus_console) {
-      str = LEPUS_NewString(ctx, "lepus");
-      DebuggerSetPropertyStr(ctx, params, "consoleTag", str);
-    }
-  }
   SendNotification(ctx, "Runtime.consoleAPICalled", params, -1);
-}
-
-void SendConsoleAPICalledNotificationWithRID(LEPUSContext *ctx,
-                                             LEPUSValue *msg) {
-  SendConsoleAPICalled(ctx, msg, true);
 }
 
 /**
@@ -2176,12 +2048,6 @@ QJS_STATIC void OnConsoleMessageInspect(LEPUSContext *ctx, LEPUSValue message) {
 
   LEPUS_SetPropertyStr(ctx, console_protocol, "type",
                        LEPUS_GetPropertyStr(ctx, message, "tag"));
-  auto rid = LEPUS_GetPropertyStr(ctx, message, "rid");
-  int32_t runtime_id = -1;
-  if (!LEPUS_IsUndefined(rid)) {
-    LEPUS_ToInt32(ctx, &runtime_id, rid);
-  }
-
   uint32_t length = LEPUS_GetLength(ctx, message);
   LEPUSValue console_message = LEPUS_NewArray(ctx);
   func_scope.PushHandle(&console_message, HANDLE_TYPE_LEPUS_VALUE);
@@ -2193,12 +2059,17 @@ QJS_STATIC void OnConsoleMessageInspect(LEPUSContext *ctx, LEPUSValue message) {
     LEPUS_SetPropertyUint32(ctx, console_message, i, remote_obj);
   }
   LEPUS_SetPropertyStr(ctx, console_protocol, "args", console_message);
+  auto url_val = LEPUS_GetPropertyStr(ctx, message, "url");
+  func_scope.PushHandle(&url_val, HANDLE_TYPE_LEPUS_VALUE);
+  const char *url_str = LEPUS_ToCString(ctx, url_val);
+  func_scope.PushHandle(&url_str, HANDLE_TYPE_CSTRING);
   if (auto cb = ctx->rt->debugger_callbacks_.on_console_message) {
-    cb(ctx, console_protocol, runtime_id);
+    cb(ctx, console_protocol, url_str);
   }
   if (!ctx->rt->gc_enable) {
-    LEPUS_FreeValue(ctx, rid);
+    LEPUS_FreeValue(ctx, url_val);
     LEPUS_FreeValue(ctx, console_protocol);
+    LEPUS_FreeCString(ctx, url_str);
   }
   return;
 }

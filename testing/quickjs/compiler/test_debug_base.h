@@ -123,8 +123,6 @@ void SetSessionEnableMapCB(LEPUSContext* ctx, int32_t view_id,
 void GetSessionStateCB(LEPUSContext* ctx, int32_t view_id,
                        bool* already_eanbled, bool* is_paused);
 
-void SendConsoleMessageWithRIDCB(LEPUSContext* ctx, LEPUSValue* console_msg);
-
 void GetSessionEnableStateCB(LEPUSContext* ctx, int32_t view_d, int32_t type,
                              bool* ret);
 

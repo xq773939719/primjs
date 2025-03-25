@@ -574,7 +574,6 @@ static _Atomic LEPUSClassID js_class_id_alloc = JS_CLASS_INIT_COUNT;
   V(script_fail_parse_ntfy_with_view_id) \
   V(set_session_enable_state)            \
   V(get_session_state)                   \
-  V(console_api_called_ntfy_with_rid)    \
   V(get_session_enable_state)            \
   V(get_console_stack_trace)             \
   V(on_console_message)
@@ -55273,7 +55272,6 @@ void PrepareQJSDebuggerForSharedContext(LEPUSContext *ctx, void **funcs,
     ctx->debugger_parse_script = 1;
     ctx->debugger_mode = 0;
   }
-  RegisterLynxConsole(ctx);
 #endif
   return;
 }

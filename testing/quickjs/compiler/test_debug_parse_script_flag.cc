@@ -53,7 +53,6 @@ TEST_F(QjsSharedDebugFlag, TESTParseScriptFlag) {
   LEPUSValue ret =
       LEPUS_Eval(ctx_, buf, strlen(buf), "test_lynxConsole.js", eval_flags);
   if (!ctx_->rt->gc_enable) LEPUS_FreeValue(ctx_, ret);
-  DeleteConsoleMessageWithRID(ctx_, 1);
   QjsDebugQueue::GetSendMessageQueue().push(
       "{\"id\":2,\"method\":\"Runtime.enable\",\"params\":{}}");
   buf = "function test() {} \n test();";

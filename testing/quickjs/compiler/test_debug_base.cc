@@ -32,10 +32,9 @@ namespace qjs_debug_test {
   V(17, ScriptFailToParseWithViewIDCB)    \
   V(18, SetSessionEnableMapCB)            \
   V(19, GetSessionStateCB)                \
-  V(20, SendConsoleMessageWithRIDCB)      \
-  V(21, GetSessionEnableStateCB)          \
-  V(22, NULL)                             \
-  V(23, OnConsoleMessageCB)
+  V(20, GetSessionEnableStateCB)          \
+  V(21, NULL)                             \
+  V(22, OnConsoleMessageCB)
 
 void RunMessageLoopOnPauseCB1(LEPUSContext* ctx) {
   std::cout << "pause" << std::endl;
@@ -195,7 +194,7 @@ uint8_t IsRuntimeDevtoolOnCB(LEPUSRuntime* rt) { return 1; }
 
 void ConsoleStackTrace(LEPUSContext* ctx, LEPUSValue* ret) {
   LEPUSValue callframes =
-      BuildConsoleBacktrace(ctx, ctx->debugger_info->debugger_current_pc);
+      BuildConsoleBacktrace(ctx, ctx->debugger_info->debugger_current_pc, ret);
   HandleScope func_scope(ctx, &callframes, HANDLE_TYPE_LEPUS_VALUE);
   DebuggerSetPropertyStr(ctx, *ret, "callFrames", callframes);
 }
@@ -394,10 +393,6 @@ void GetSessionEnableStateCB(LEPUSContext* ctx, int32_t view_id, int32_t type,
       }
     }
   }
-}
-
-void SendConsoleMessageWithRIDCB(LEPUSContext* ctx, LEPUSValue* console_msg) {
-  SendConsoleAPICalledNotificationWithRID(ctx, console_msg);
 }
 
 static void OnConsoleMessageCB(LEPUSContext* ctx, LEPUSValue console_msg,

@@ -285,12 +285,11 @@ typedef struct QJSDebuggerCallbacks2 {
                                    int32_t protocol_type);
   void (*get_session_state)(LEPUSContext *ctx, int32_t view_id,
                             bool *is_already_enabled, bool *is_paused);
-  void (*console_api_called_ntfy_with_rid)(LEPUSContext *ctx, LEPUSValue *msg);
   void (*get_session_enable_state)(LEPUSContext *ctx, int32_t view_id,
                                    int32_t protocol_type, bool *ret);
   void (*get_console_stack_trace)(LEPUSContext *ctx, LEPUSValue *ret);
   void (*on_console_message)(LEPUSContext *ctx, LEPUSValue console_message,
-                             int32_t);
+                             const char *);
 } QJSDebuggerCallbacks2;
 #endif
 

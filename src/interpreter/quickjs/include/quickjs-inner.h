@@ -3218,8 +3218,7 @@ void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable);
 
 #ifdef ENABLE_QUICKJS_DEBUGGER
 QJS_HIDE pid_t get_tid();
-QJS_HIDE bool CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj);
-QJS_HIDE LEPUSValue JS_ThrowCtxError(LEPUSContext *ctx);
+QJS_HIDE void CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj);
 #endif
 
 #endif  // SRC_INTERPRETER_QUICKJS_INCLUDE_QUICKJS_INNER_H_

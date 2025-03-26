@@ -4792,10 +4792,7 @@ int JS_SetPropertyInternalImpl_GC(LEPUSContext *ctx, LEPUSValueConst this_obj,
   p = LEPUS_VALUE_GET_OBJ(this_obj);
 
 #ifdef ENABLE_QUICKJS_DEBUGGER
-  if (CheckObjectCtx(ctx, val)) {
-    JS_ThrowCtxError(ctx);
-    return -1;
-  }
+  CheckObjectCtx(ctx, val);
 #endif
 
 retry:

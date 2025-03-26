@@ -8847,10 +8847,7 @@ int JS_SetPropertyInternalImpl(LEPUSContext *ctx, LEPUSValueConst this_obj,
   p = LEPUS_VALUE_GET_OBJ(this_obj);
 
 #ifdef ENABLE_QUICKJS_DEBUGGER
-  if (CheckObjectCtx(ctx, val)) {
-    JS_ThrowCtxError(ctx);
-    return -1;
-  }
+  CheckObjectCtx(ctx, val);
 #endif
 
 retry:
@@ -18505,9 +18502,7 @@ QJS_STATIC inline LEPUSValue JS_CallInternalTI(LEPUSContext *caller_ctx,
                                                LEPUSValue new_target, int argc,
                                                LEPUSValue *argv, int flags) {
 #ifdef ENABLE_QUICKJS_DEBUGGER
-  if (CheckObjectCtx(caller_ctx, func_obj)) {
-    return JS_ThrowCtxError(caller_ctx);
-  }
+  CheckObjectCtx(caller_ctx, func_obj);
 #endif
 
 #ifdef ENABLE_PRIMJS_SNAPSHOT
@@ -56116,7 +56111,7 @@ pid_t get_tid() {
 #endif
 }
 
-bool CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj) {
+void CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj) {
   if (ctx->object_ctx_check) {
     bool inconsistent_ctx =
         (LEPUS_VALUE_IS_OBJECT(obj) &&
@@ -56124,23 +56119,36 @@ bool CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj) {
         (LEPUS_VALUE_IS_FUNCTION_BYTECODE(obj) &&
          static_cast<LEPUSFunctionBytecode *>(LEPUS_VALUE_GET_PTR(obj))->ctx !=
              ctx);
-    bool inconsistent_tid = false;
+    if (inconsistent_ctx) {
+#if defined(ANDROID) || defined(__ANDROID__)
+      __android_log_print(ANDROID_LOG_FATAL, "PRIMJS_GC",
+                          "CheckObjectCtx failed because of inconsistent ctx. "
+                          "obj: %p, ori_ctx: %p, cur_ctx: %p\n",
+                          LEPUS_VALUE_GET_OBJ(obj),
+                          LEPUS_VALUE_GET_OBJ(obj)->ctx, ctx);
+#endif
+      abort();
+    }
+#if 0
 #if defined(ANDROID) || defined(__ANDROID__)
     pid_t tid = get_tid();
-    inconsistent_tid =
+    bool inconsistent_tid =
         (LEPUS_VALUE_IS_OBJECT(obj) &&
          (LEPUS_VALUE_GET_OBJ(obj)->tid) != tid) ||
         (LEPUS_VALUE_IS_FUNCTION_BYTECODE(obj) &&
          static_cast<LEPUSFunctionBytecode *>(LEPUS_VALUE_GET_PTR(obj))->tid !=
              tid);
-#endif
-    return inconsistent_ctx || inconsistent_tid;
-  }
-  return false;
-}
 
-LEPUSValue JS_ThrowCtxError(LEPUSContext *ctx) {
-  return LEPUS_ThrowTypeError(
-      ctx, "The property's ctx or tid is inconsistent with this object.");
+    if (inconsistent_tid) {
+      __android_log_print(ANDROID_LOG_FATAL, "PRIMJS_GC",
+                          "CheckObjectCtx failed, inconsistent_tid; obj: %p, "
+                          "ori_tid: %d, cur_tid: %d ctx: %p\n",
+                          LEPUS_VALUE_GET_OBJ(obj),
+                          (int)(LEPUS_VALUE_GET_OBJ(obj)->tid), (int)tid, ctx);
+      abort();
+    }
+#endif
+#endif
+  }
 }
 #endif

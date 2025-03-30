@@ -1605,6 +1605,8 @@ void LEPUS_SetFuncFileName(LEPUSContext *, LEPUSValue, const char *);
 void InitLynxTraceEnv(void *(*)(const char *), void (*)(void *));
 
 void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable);
+
+void UpdateOuterObjSize(LEPUSRuntime *rt, int size);
 // <Primjs end>
 
 #undef lepus_unlikely

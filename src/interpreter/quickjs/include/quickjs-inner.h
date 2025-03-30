@@ -3216,6 +3216,8 @@ void get_caller_string(JSFunctionDef *s);
 
 void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable);
 
+void trig_gc(JSMallocState *s, size_t size, bool is_outer = false);
+
 #ifdef ENABLE_QUICKJS_DEBUGGER
 QJS_HIDE pid_t get_tid();
 QJS_HIDE void CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj);

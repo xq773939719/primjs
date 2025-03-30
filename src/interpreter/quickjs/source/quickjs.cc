@@ -183,6 +183,8 @@ int64_t HEAP_TAG_INNER = 0;
 
 // <primjs begin>
 
+static const int OUTER_HEAP_SIZE_LIMIT = 32 * MB;
+
 #if defined(ENABLE_PRIMJS_SNAPSHOT)
 static const int NUM_OF_TOS_STATES = 3;
 #endif
@@ -56120,6 +56122,19 @@ void InitLynxTraceEnv(void *(*begin)(const char *), void (*end)(void *ptr)) {
 void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable) {
   ctx->object_ctx_check = enable;
   return;
+}
+
+void UpdateOuterObjSize(LEPUSRuntime *rt, int size) {
+#ifdef ENABLE_COMPATIBLE_MM
+  if (rt->gc_enable) {
+    JSMallocState *s = &rt->malloc_state;
+    s->allocate_state.outer_heap_size += size;
+    if (s->allocate_state.outer_heap_size > OUTER_HEAP_SIZE_LIMIT) {
+      trig_gc(s, size, true);
+      s->allocate_state.outer_heap_size = 0;
+    }
+  }
+#endif
 }
 
 #ifdef ENABLE_QUICKJS_DEBUGGER

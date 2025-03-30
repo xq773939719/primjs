@@ -850,12 +850,16 @@ bool switch_local_idx(struct malloc_state *m, size_t size) {
   return false;
 }
 
-void trig_gc(JSMallocState *s, size_t size) {
+void trig_gc(JSMallocState *s, size_t size, bool is_outer) {
   struct malloc_state *m = &s->allocate_state;
+  LEPUSRuntime *rt = static_cast<LEPUSRuntime *>(m->runtime);
+  if (is_outer) {
+    rt->gc->CollectGarbage(size);
+    return;
+  }
   if (switch_local_idx(m, size)) {
     return;
   }
-  LEPUSRuntime *rt = static_cast<LEPUSRuntime *>(m->runtime);
   // gc pause suppression mode
   if (rt->gc->GetGCPauseSuppressionMode() && rt->is_lepusng &&
       m->footprint < 240 * MB) {

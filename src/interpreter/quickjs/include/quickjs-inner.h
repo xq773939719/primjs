@@ -3219,7 +3219,9 @@ void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable);
 void trig_gc(JSMallocState *s, size_t size, bool is_outer = false);
 
 #ifdef ENABLE_QUICKJS_DEBUGGER
+#if defined(ANDROID) || defined(__ANDROID__)
 QJS_HIDE pid_t get_tid();
+#endif
 QJS_HIDE void CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj);
 #endif
 

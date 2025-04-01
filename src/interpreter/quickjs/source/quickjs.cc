@@ -56138,13 +56138,9 @@ void UpdateOuterObjSize(LEPUSRuntime *rt, int size) {
 }
 
 #ifdef ENABLE_QUICKJS_DEBUGGER
-pid_t get_tid() {
 #if defined(ANDROID) || defined(__ANDROID__)
-  return syscall(SYS_gettid);
-#else
-  return 0;
+pid_t get_tid() { return syscall(SYS_gettid); }
 #endif
-}
 
 void CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj) {
   if (ctx->object_ctx_check) {

@@ -2845,8 +2845,10 @@ postaction:
 }
 
 void gcfree(mstate fm, void* mem) {
+#if defined(ANDROID) || defined(__ANDROID__)
   PRINT("gcfree, addr:%p, mstate:%p, tid:%d\n", mem, fm,
         (int)syscall(SYS_gettid));
+#endif
 #ifdef ENABLE_GC_DEBUG_TOOLS
   delete_cur_mems(fm->runtime, mem);
 #endif

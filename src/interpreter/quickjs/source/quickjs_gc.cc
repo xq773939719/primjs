@@ -1197,6 +1197,14 @@ void JS_FreeRuntime_GC(LEPUSRuntime *rt) {
 #endif
 
   /* free the atoms */
+#ifdef ENABLE_LEPUSNG
+  for (int i = 0; i < rt->atom_size; i++) {
+    JSAtomStruct *p = rt->atom_array[i];
+    if (!atom_is_free(p)) {
+      JS_FreeStringCache(rt, p);
+    }
+  }
+#endif
   rt->atom_size = 0;
   rt->atom_array = NULL;
   rt->atom_hash = NULL;

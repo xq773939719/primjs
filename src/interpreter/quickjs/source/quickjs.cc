@@ -968,7 +968,7 @@ LEPUSRuntime *LEPUS_NewRuntime2(const LEPUSMallocFunctions *mf, void *opaque,
                                 uint32_t mode) {
 #ifdef ENABLE_COMPATIBLE_MM
   if (gc_enabled()) {
-    return JS_NewRuntime2_GC(mf, opaque);
+    return JS_NewRuntime2_GC(mf, opaque, mode);
   }
 #endif
   (void)mode;
@@ -1226,7 +1226,7 @@ LEPUSRuntime *LEPUS_NewRuntime(void) {
   settingsFlag = GetSettingsFlag();
 #ifdef ENABLE_COMPATIBLE_MM
   if (gc_enabled() == TRUE) {
-    return JS_NewRuntime_GC();
+    return JS_NewRuntime_GC(0);
   }
 #endif
   return LEPUS_NewRuntime2(&def_malloc_funcs, NULL, 0);
@@ -1236,7 +1236,7 @@ LEPUSRuntime *LEPUS_NewRuntimeWithMode(uint32_t mode) {
   settingsFlag = GetSettingsFlag();
 #ifdef ENABLE_COMPATIBLE_MM
   if (gc_enabled() == TRUE) {
-    return JS_NewRuntime_GC();
+    return JS_NewRuntime_GC(mode);
   }
 #endif
   return LEPUS_NewRuntime2(&def_malloc_funcs, NULL, mode);
@@ -14196,7 +14196,8 @@ LEPUSValue LEPUS_NewLepusWrap(LEPUSContext *ctx, void *p, int tag) {
   return LEPUS_MKPTR(LEPUS_TAG_LEPUS_REF, pref);
 }
 
-void RegisterGCInfoCallback(LEPUSRuntime *rt, void (*func)(const char *, int)) {
+void RegisterGCInfoCallback(LEPUSRuntime *rt,
+                            void (*func)(LEPUSContext *, const char *, int)) {
   if (!rt) return;
   rt->update_gc_info = func;
 }

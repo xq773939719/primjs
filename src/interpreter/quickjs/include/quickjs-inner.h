@@ -401,7 +401,7 @@ struct LEPUSRuntime {
   struct list_head string_list; /* list of JSString.link */
 #endif
   // <Primjs end>
-  void (*update_gc_info)(const char *, int);
+  void (*update_gc_info)(LEPUSContext *, const char *, int);
   char gc_info_start_[BUF_LEN];
   char gc_info_end_[BUF_LEN];
   int64_t init_time;
@@ -899,9 +899,11 @@ enum class EntryMode { INTERPRETER, BASELINE };
 #define JIT_THRESHOLD 6
 
 // <primjs end>
+enum {
+  GC_INFO_THREADHOLD_MB = 0xFF000000,
+};
 
 // settings key opt
-
 enum {
   PRIMJS_SNAPSHOT_ENABLE = 0b000000001,
   JSON_OPT_DISABLE = 0b000000010,
@@ -2034,8 +2036,9 @@ LEPUSValue JS_GetSeparableStringContentNotDup_GC(LEPUSContext *ctx,
 QJS_HIDE int set_array_length_gc(LEPUSContext *ctx, LEPUSObject *p,
                                  JSProperty *prop, LEPUSValue val, int flags);
 bool gc_enabled();
-LEPUSRuntime *JS_NewRuntime_GC();
-LEPUSRuntime *JS_NewRuntime2_GC(const LEPUSMallocFunctions *mf, void *opaque);
+LEPUSRuntime *JS_NewRuntime_GC(uint32_t mode);
+LEPUSRuntime *JS_NewRuntime2_GC(const LEPUSMallocFunctions *mf, void *opaque,
+                                uint32_t mode);
 void JS_FreeRuntime_GC(LEPUSRuntime *rt);
 void JS_FreeRuntimeForEffect(LEPUSRuntime *rt);
 LEPUSContext *JS_NewContext_GC(LEPUSRuntime *rt);

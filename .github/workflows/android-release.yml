@@ -65,7 +65,7 @@ jobs:
         artifacts: "Android/app/build/outputs/aar/primjs-release.aar"
 
     - name: Publish artifact to maven
-      uses: lynx-infra/maven-publish-action@c48e3067642c7ceccf807cd52e6644a257cd8ded
+      uses: lynx-infra/maven-publish-action@2a55bab5273ffd84ebbb600e783286fc6251c239
       with:
         portal_api_token: ${{ secrets.PORTAL_API_TOKEN }}
         artifact_path_list: ${{ steps.build_artifact.outputs.artifact_list }}

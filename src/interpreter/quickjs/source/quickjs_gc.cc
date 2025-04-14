@@ -627,8 +627,14 @@ static JSClassShortDef const js_std_class_def[] = {
     {JS_ATOM_Generator, NULL, NULL},              /* JS_CLASS_GENERATOR */
 };
 
+static void set_gc_info_threadhold(mstate s, uint32_t mode) {
+  s->gc_info_threadhold = ((mode & GC_INFO_THREADHOLD_MB) >> 24) * MB;
+  s->gc_info_interval_size = 0;
+}
+
 static inline uint8_t *js_get_stack_pointer(void);
-LEPUSRuntime *JS_NewRuntime2_GC(const LEPUSMallocFunctions *mf, void *opaque) {
+LEPUSRuntime *JS_NewRuntime2_GC(const LEPUSMallocFunctions *mf, void *opaque,
+                                uint32_t mode) {
   LEPUSRuntime *rt;
   JSMallocState ms;
 
@@ -681,6 +687,7 @@ LEPUSRuntime *JS_NewRuntime2_GC(const LEPUSMallocFunctions *mf, void *opaque) {
 #else
   rt->malloc_state.allocate_state.footprint_limit = 64 * MB;
 #endif
+  set_gc_info_threadhold(&rt->malloc_state.allocate_state, mode);
 
   /* for trace gc */
   rt->ptr_handles = new PtrHandles(rt);
@@ -892,6 +899,15 @@ static void *base_allocate(JSMallocState *s, size_t size, int alloc_tag,
 #ifdef ENABLE_FORCE_GC
   LEPUS_RunGC(static_cast<LEPUSRuntime *>(s->allocate_state.runtime));
 #endif
+  mstate m = &s->allocate_state;
+  LEPUSRuntime *rt = static_cast<LEPUSRuntime *>(m->runtime);
+  if (m->gc_info_threadhold) {
+    m->gc_info_interval_size += size;
+    if (m->gc_info_interval_size > m->gc_info_threadhold) {
+      rt->gc->UpdateGCInfo(0, 0);
+      m->gc_info_interval_size = 0;
+    }
+  }
   void *ptr;
 
   /* Do not allocate zero bytes: behavior is platform dependent */
@@ -914,7 +930,6 @@ static void *base_allocate(JSMallocState *s, size_t size, int alloc_tag,
 #else
     printf("trace_gc_error, OOM, alloc_size: %zu\n", size);
 #endif
-    LEPUSRuntime *rt = static_cast<LEPUSRuntime *>(s->allocate_state.runtime);
     if (rt->mem_for_oom != nullptr) {
       gcfree(&s->allocate_state, rt->mem_for_oom);
       rt->mem_for_oom = nullptr;
@@ -994,6 +1009,15 @@ static void *base_reallocate(
 #ifdef ENABLE_FORCE_GC
   LEPUS_RunGC(static_cast<LEPUSRuntime *>(s->allocate_state.runtime));
 #endif
+  mstate m = &s->allocate_state;
+  LEPUSRuntime *rt = static_cast<LEPUSRuntime *>(m->runtime);
+  if (m->gc_info_threadhold) {
+    m->gc_info_interval_size += size;
+    if (m->gc_info_interval_size > m->gc_info_threadhold) {
+      rt->gc->UpdateGCInfo(0, 0);
+      m->gc_info_interval_size = 0;
+    }
+  }
   void *new_ptr;
 
   if (!ptr) {
@@ -1013,7 +1037,6 @@ static void *base_reallocate(
 #else
       printf("trace_gc_error, OOM, alloc_size: %zu\n", size);
 #endif
-      LEPUSRuntime *rt = static_cast<LEPUSRuntime *>(s->allocate_state.runtime);
       if (rt->mem_for_oom != nullptr) {
         gcfree(&s->allocate_state, rt->mem_for_oom);
         rt->mem_for_oom = nullptr;
@@ -1095,8 +1118,8 @@ static const LEPUSMallocFunctions def_allocate_funcs = {
     (size_t(*)(const void *))allocate_usable_size,
 };
 
-LEPUSRuntime *JS_NewRuntime_GC(void) {
-  return JS_NewRuntime2_GC(&def_allocate_funcs, NULL);
+LEPUSRuntime *JS_NewRuntime_GC(uint32_t mode) {
+  return JS_NewRuntime2_GC(&def_allocate_funcs, NULL, mode);
 }
 
 void JS_SetMemoryLimit_GC(LEPUSRuntime *rt, size_t limit) {
@@ -32000,7 +32023,12 @@ void GarbageCollector::UpdateGCInfo(size_t heapsize_before, int64_t duration) {
             << "  ]\n"
             << "}\n";
     info_size++;
-    rt_->update_gc_info(gc_info.str().c_str(), info_size);
+    LEPUSContext *ctx = nullptr;
+    struct list_head *el, *el1;
+    list_for_each_safe(el, el1, &rt_->context_list) {
+      ctx = list_entry(el, LEPUSContext, link);
+    }
+    rt_->update_gc_info(ctx, gc_info.str().c_str(), info_size);
     gc_info.str("");
     info_size = 0;
   } else {

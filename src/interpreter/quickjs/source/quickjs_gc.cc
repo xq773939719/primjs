@@ -31988,7 +31988,7 @@ void GarbageCollector::UpdateGCInfo(size_t heapsize_before, int64_t duration) {
           << "      \"survival_time\": "
           << (get_daytime() - rt_->init_time) / MS << ",\n"
           << "      \"timestamp\": " << get_daytime() << ",\n"
-          << "      \"rt_ptr\": " << rt_ << ",\n"
+          << "      \"rt_ptr\": \"" << rt_ << "\",\n"
           << "      \"total_mem\": " << total_mem / KB << ",\n";
   if (rt_->rt_info) {
     gc_info << "      \"rt_info\": \"" << rt_->rt_info << "\"\n";
@@ -33531,7 +33531,7 @@ char *LEPUS_GetGCTimingInfo(LEPUSContext *ctx, bool is_start) {
     memset(gc_info, 0, BUF_LEN);
     snprintf(gc_info, BUF_LEN,
              "{\n  \"gc_count\" : %zu,\n  \"gc_duration\" : %" PRIu64
-             ",\n  \"gc_heapsize\" : %zu,\n  \"rt_info\" : %s\n}\n",
+             ",\n  \"gc_heapsize\" : %zu,\n  \"rt_info\" : \"%s\"\n}\n",
              rt->gc_cnt, rt->gc->GetGCDuration() / MS,
              rt->malloc_state.allocate_state.footprint / KB, ctx->rt->rt_info);
     return gc_info;

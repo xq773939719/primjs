@@ -838,6 +838,7 @@ bool switch_local_idx(struct malloc_state *m, size_t size) {
     if (m->gc_flag[i] == 1) {
       change_to_local_idx(m, i);
       m->gc_flag[i] = 0;
+#if defined(ANDROID) || defined(__ANDROID__)
       void *ptr = allocate(m, size);
       if (ptr) {
         gcfree(m, ptr);
@@ -845,6 +846,10 @@ bool switch_local_idx(struct malloc_state *m, size_t size) {
       } else {
         add_footprint_limit(m, size * 1.5);
       }
+#else
+      add_footprint_limit(m, size * 1.5);
+      return true;
+#endif
     }
   }
   return false;

@@ -1045,8 +1045,6 @@ __attribute__((always_inline)) void js_allocate_abort(mstate m, mchunkptr p) {
                         (uintptr_t)m->top, m->topsize, (uintptr_t)m->dv,
                         m->dvsize, m->footprint, m->max_footprint);
   }
-#else
-  abort();
 #endif
 }
 

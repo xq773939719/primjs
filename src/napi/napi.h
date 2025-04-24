@@ -1209,7 +1209,7 @@ class Reference {
     return *this;
   }
 
-  NAPI_DISALLOW_ASSIGN(Reference<T>)
+  NAPI_DISALLOW_ASSIGN_COPY(Reference<T>)
 
   NAPI_INLINE operator napi_ref() const { return _ref; }
 

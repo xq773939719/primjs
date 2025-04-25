@@ -299,6 +299,7 @@ void HandleEvaluate(DebuggerParams* runtime_options) {
 
     char* val_expression = GetExpression(ctx, params_object_group, expression);
     func_scope.PushHandle(val_expression, HANDLE_TYPE_DIR_HEAP_OBJ);
+    info->eval_throw_on_side_effect = throw_side_effect;
 
     const char* str = "{(async function(){ await 1; })()}";
     if (throw_side_effect && val_expression &&
@@ -312,6 +313,7 @@ void HandleEvaluate(DebuggerParams* runtime_options) {
       func_scope.PushHandle(&result, HANDLE_TYPE_LEPUS_VALUE);
       SendResponse(ctx, message, result);
     }
+    info->eval_throw_on_side_effect = false;
     if (!ctx->rt->gc_enable) {
       LEPUS_FreeValue(ctx, params_object_group);
       LEPUS_FreeCString(ctx, expression);

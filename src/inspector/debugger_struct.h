@@ -274,6 +274,7 @@ struct LEPUSDebuggerInfo {
   bool step_statement{false};
   // if profiling is started, true after Profiler.start
   bool is_profiling_started{false};
+  bool eval_throw_on_side_effect{false};
 };
 
 #define QJSDebuggerRegisterConsole(V) \

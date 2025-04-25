@@ -1048,7 +1048,9 @@ QJS_STATIC void OnConsoleMessageInspect(LEPUSContext *, LEPUSValue);
 QJS_STATIC void CommonLog(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
                           LEPUSValueConst *argv, int magic) {
   auto *debugger_info = ctx->debugger_info;
-  if (!debugger_info || LEPUS_IsNull(debugger_info->console.messages)) return;
+  if (!debugger_info || LEPUS_IsNull(debugger_info->console.messages) ||
+      debugger_info->eval_throw_on_side_effect)
+    return;
   const char *tag_table[] = {"log", "info", "debug", "error", "warning", "log",
                              "",    "",     "log",   "",      "timeEnd"};
   const char *tag = tag_table[magic];

@@ -153,9 +153,7 @@ void Visitor::VisitJSVarRef(void *ptr, int local_idx) noexcept {
   free_var_ref
   */
   JSVarRef *var_ref = static_cast<JSVarRef *>(ptr);
-  if (var_ref->is_detached) {
-    PushObjLEPUSValue(var_ref->value, local_idx);
-  }
+  PushObjLEPUSValue(*var_ref->pvalue, local_idx);
 }
 
 void Visitor::VisitRootLEPUSValue(LEPUSValue *val, int local_idx) noexcept {

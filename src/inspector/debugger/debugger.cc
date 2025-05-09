@@ -2167,7 +2167,7 @@ void LEPUSDebuggerInfo::operator delete(void *ptr) {
 
 void SetJSDebuggerName(LEPUSContext *ctx, const char *name) {
   auto *info = ctx->debugger_info;
-  if (ctx->gc_enable) {
+  if (!ctx->gc_enable) {
     LEPUS_FreeValue(ctx, info->debugger_name);
   }
   info->debugger_name = LEPUS_NewString(ctx, name);

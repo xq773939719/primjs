@@ -88,3 +88,16 @@
 #undef napi_property_descriptor
 #undef napi_extended_error_info
 #undef napi_get_last_error_info
+#undef napi_key_include_prototypes
+#undef napi_key_own_only
+#undef napi_key_collection_mode
+#undef napi_key_all_properties
+#undef napi_key_writable
+#undef napi_key_enumerable
+#undef napi_key_configurable
+#undef napi_key_skip_strings
+#undef napi_key_skip_symbols
+#undef napi_key_filter
+#undef napi_key_keep_numbers
+#undef napi_key_numbers_to_strings
+#undef napi_key_conversion

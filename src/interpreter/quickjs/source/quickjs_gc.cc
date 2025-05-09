@@ -10072,10 +10072,9 @@ __exception int js_append_enumerate_gc(LEPUSContext *ctx, LEPUSValue *sp) {
   iterator = JS_GetPropertyInternal_GC(ctx, sp[-1], JS_ATOM_Symbol_iterator,
                                        sp[-1], 0);
   if (LEPUS_IsException(iterator)) return -1;
-  is_array_iterator = JS_IsCFunction(
-      ctx, iterator,
-      reinterpret_cast<LEPUSCFunction *>(js_create_array_iterator),
-      JS_ITERATOR_KIND_VALUE);
+  LEPUSCFunctionType ft = {.generic_magic = js_create_array_iterator};
+  is_array_iterator =
+      JS_IsCFunction(ctx, iterator, ft.generic, JS_ITERATOR_KIND_VALUE);
 
   enumobj = JS_GetIterator(ctx, sp[-1], FALSE);
   if (LEPUS_IsException(enumobj)) return -1;
@@ -10083,10 +10082,8 @@ __exception int js_append_enumerate_gc(LEPUSContext *ctx, LEPUSValue *sp) {
   if (LEPUS_IsException(method)) {
     return -1;
   }
-  if (is_array_iterator &&
-      JS_IsCFunction(ctx, method,
-                     reinterpret_cast<LEPUSCFunction *>(js_array_iterator_next),
-                     0) &&
+  LEPUSCFunctionType ft2 = {.iterator_next = js_array_iterator_next};
+  if (is_array_iterator && JS_IsCFunction(ctx, method, ft2.generic, 0) &&
       js_get_fast_array(ctx, sp[-1], &arrp, &count32)) {
     int64_t len;
     /* Handle fast arrays explicitly */
@@ -25197,15 +25194,15 @@ void JS_AddIntrinsicMapSet_GC(LEPUSContext *ctx) {
   HandleScope func_scope(ctx, &obj1, HANDLE_TYPE_LEPUS_VALUE);
   char buf[ATOM_GET_STR_BUF_SIZE];
 
+  LEPUSCFunctionType ft = {.generic_magic = js_map_constructor};
   for (i = 0; i < 4; i++) {
     const char *name = JS_AtomGetStr(ctx, buf, sizeof(buf), JS_ATOM_Map + i);
     ctx->class_proto[JS_CLASS_MAP + i] = JS_NewObject_GC(ctx);
     JS_SetPropertyFunctionList_GC(ctx, ctx->class_proto[JS_CLASS_MAP + i],
                                   js_map_proto_funcs_ptr[i],
                                   js_map_proto_funcs_count[i]);
-    obj1 = JS_NewCFunction2_GC(
-        ctx, reinterpret_cast<LEPUSCFunction *>(js_map_constructor), name, 0,
-        LEPUS_CFUNC_constructor_magic, i);
+    obj1 = JS_NewCFunction2_GC(ctx, ft.generic, name, 0,
+                               LEPUS_CFUNC_constructor_magic, i);
     if (i < 2) {
       JS_SetPropertyFunctionList_GC(ctx, obj1, js_map_funcs,
                                     countof(js_map_funcs));
@@ -25312,9 +25309,9 @@ static void JS_AddIntrinsicWeakRef(LEPUSContext *ctx) {
   LEPUSObject *tmp = LEPUS_VALUE_GET_OBJ(ctx->class_proto[JS_CLASS_WeakRef]);
   JS_SetPropertyFunctionList_GC(ctx, ctx->class_proto[JS_CLASS_WeakRef],
                                 js_weakref_proto_funcs, 2);
-  LEPUSValue obj1 = JS_NewCFunction2_GC(
-      ctx, reinterpret_cast<LEPUSCFunction *>(js_weakref_constructor_gc), name,
-      1, LEPUS_CFUNC_constructor_magic, 0);
+  LEPUSCFunctionType ft = {.generic_magic = js_weakref_constructor_gc};
+  LEPUSValue obj1 = JS_NewCFunction2_GC(ctx, ft.generic, name, 1,
+                                        LEPUS_CFUNC_constructor_magic, 0);
   func_scope.PushHandle(&obj1, HANDLE_TYPE_LEPUS_VALUE);
   JS_SetPropertyFunctionList_GC(ctx, obj1, js_map_funcs,
                                 countof(js_map_funcs));  // Symbol.species
@@ -25475,11 +25472,10 @@ void JS_AddIntrinsicFinalizationRegistry(LEPUSContext *ctx) {
                                 ctx->class_proto[JS_CLASS_FinalizationRegistry],
                                 js_finalizationRegistry_proto_funcs,
                                 countof(js_finalizationRegistry_proto_funcs));
-  LEPUSValue obj1 =
-      JS_NewCFunction2_GC(ctx,
-                          reinterpret_cast<LEPUSCFunction *>(
-                              js_finalizationRegistry_constructor_gc),
-                          name, 1, LEPUS_CFUNC_constructor_magic, 0);
+  LEPUSCFunctionType ft = {.generic_magic =
+                               js_finalizationRegistry_constructor_gc};
+  LEPUSValue obj1 = JS_NewCFunction2_GC(ctx, ft.generic, name, 1,
+                                        LEPUS_CFUNC_constructor_magic, 0);
   func_scope.PushHandle(&obj1, HANDLE_TYPE_LEPUS_VALUE);
   JS_SetPropertyFunctionList_GC(ctx, obj1, js_map_funcs, countof(js_map_funcs));
   JS_NewGlobalCConstructor2(ctx, obj1, name,
@@ -26657,11 +26653,12 @@ void JS_AddIntrinsicPromise_GC(LEPUSContext *ctx) {
                             ctx->class_proto[JS_CLASS_PROMISE]);
 
   /* AsyncFunction */
+  LEPUSCFunctionType ft = {.generic_magic = js_function_constructor};
   ctx->class_proto[JS_CLASS_ASYNC_FUNCTION] =
       JS_NewObjectProto_GC(ctx, ctx->function_proto);
-  obj1 = JS_NewCFunction3(
-      ctx, (LEPUSCFunction *)js_function_constructor, "AsyncFunction", 1,
-      LEPUS_CFUNC_constructor_or_func_magic, JS_FUNC_ASYNC, ctx->function_ctor);
+  obj1 = JS_NewCFunction3(ctx, ft.generic, "AsyncFunction", 1,
+                          LEPUS_CFUNC_constructor_or_func_magic, JS_FUNC_ASYNC,
+                          ctx->function_ctor);
   JS_SetPropertyFunctionList_GC(ctx, ctx->class_proto[JS_CLASS_ASYNC_FUNCTION],
                                 js_async_function_proto_funcs,
                                 countof(js_async_function_proto_funcs));
@@ -26692,8 +26689,7 @@ void JS_AddIntrinsicPromise_GC(LEPUSContext *ctx) {
   /* AsyncGeneratorFunction */
   ctx->class_proto[JS_CLASS_ASYNC_GENERATOR_FUNCTION] =
       JS_NewObjectProto_GC(ctx, ctx->function_proto);
-  obj1 = JS_NewCFunction3(ctx, (LEPUSCFunction *)js_function_constructor,
-                          "AsyncGeneratorFunction", 1,
+  obj1 = JS_NewCFunction3(ctx, ft.generic, "AsyncGeneratorFunction", 1,
                           LEPUS_CFUNC_constructor_or_func_magic,
                           JS_FUNC_ASYNC_GENERATOR, ctx->function_ctor);
   JS_SetPropertyFunctionList_GC(
@@ -28611,26 +28607,26 @@ void JS_AddIntrinsicBaseObjects_GC(LEPUSContext *ctx) {
   JS_SetPropertyFunctionList_GC(ctx, ctx->function_proto,
                                 js_function_proto_funcs,
                                 countof(js_function_proto_funcs));
+  LEPUSCFunctionType ft = {.generic_magic = js_function_constructor};
   ctx->function_ctor = JS_NewCFunction2_GC(
-      ctx, reinterpret_cast<LEPUSCFunction *>(js_function_constructor),
-      "Function", 1, LEPUS_CFUNC_constructor_or_func_magic, JS_FUNC_NORMAL);
+      ctx, ft.generic, "Function", 1, LEPUS_CFUNC_constructor_or_func_magic,
+      JS_FUNC_NORMAL);
   JS_NewGlobalCConstructor2(ctx, ctx->function_ctor, "Function",
                             ctx->function_proto);
 
   /* Error */
-  obj1 = JS_NewCFunction2_GC(
-      ctx, reinterpret_cast<LEPUSCFunction *>(js_error_constructor), "Error", 1,
-      LEPUS_CFUNC_constructor_or_func_magic, -1);
+  LEPUSCFunctionType ft2 = {.generic_magic = js_error_constructor};
+  obj1 = JS_NewCFunction2_GC(ctx, ft2.generic, "Error", 1,
+                             LEPUS_CFUNC_constructor_or_func_magic, -1);
   JS_NewGlobalCConstructor2(ctx, obj1, "Error",
                             ctx->class_proto[JS_CLASS_ERROR]);
 
   for (i = 0; i < JS_NATIVE_ERROR_COUNT; i++) {
     HandleScope block_scope(ctx->rt);
     int n_args = 1 + (i == JS_AGGREGATE_ERROR);
-    LEPUSValue func_obj = JS_NewCFunction3(
-        ctx, reinterpret_cast<LEPUSCFunction *>(js_error_constructor),
-        native_error_name[i], n_args, LEPUS_CFUNC_constructor_or_func_magic, i,
-        obj1);
+    LEPUSValue func_obj =
+        JS_NewCFunction3(ctx, ft2.generic, native_error_name[i], n_args,
+                         LEPUS_CFUNC_constructor_or_func_magic, i, obj1);
     block_scope.PushHandle(&func_obj, HANDLE_TYPE_LEPUS_VALUE);
     JS_NewGlobalCConstructor2(ctx, func_obj, native_error_name[i],
                               ctx->native_error_proto[i]);
@@ -28782,10 +28778,10 @@ void JS_AddIntrinsicBaseObjects_GC(LEPUSContext *ctx) {
 
   ctx->class_proto[JS_CLASS_GENERATOR_FUNCTION] =
       JS_NewObjectProto_GC(ctx, ctx->function_proto);
-  obj1 = JS_NewCFunction2_GC(
-      ctx, reinterpret_cast<LEPUSCFunction *>(js_function_constructor),
-      "GeneratorFunction", 1, LEPUS_CFUNC_constructor_or_func_magic,
-      JS_FUNC_GENERATOR);
+  LEPUSCFunctionType ft3 = {.generic_magic = js_function_constructor};
+  obj1 = JS_NewCFunction2_GC(ctx, ft3.generic, "GeneratorFunction", 1,
+                             LEPUS_CFUNC_constructor_or_func_magic,
+                             JS_FUNC_GENERATOR);
   JS_SetPropertyFunctionList_GC(ctx,
                                 ctx->class_proto[JS_CLASS_GENERATOR_FUNCTION],
                                 js_generator_function_proto_funcs,
@@ -30657,6 +30653,7 @@ void JS_AddIntrinsicTypedArrays_GC(LEPUSContext *ctx) {
                                 countof(js_typed_array_base_funcs));
   JS_SetConstructor(ctx, typed_array_base_func, typed_array_base_proto);
 
+  LEPUSCFunctionType ft = {.generic_magic = js_typed_array_constructor_GC};
   for (i = JS_CLASS_UINT8C_ARRAY;
        i < JS_CLASS_UINT8C_ARRAY + JS_TYPED_ARRAY_COUNT; i++) {
     HandleScope block_scope(ctx->rt);
@@ -30670,9 +30667,9 @@ void JS_AddIntrinsicTypedArrays_GC(LEPUSContext *ctx) {
         LEPUS_NewInt32(ctx, 1 << typed_array_size_log2(i)), 0);
     name = JS_AtomGetStr(ctx, buf, sizeof(buf),
                          JS_ATOM_Uint8ClampedArray + i - JS_CLASS_UINT8C_ARRAY);
-    func_obj = JS_NewCFunction3(
-        ctx, reinterpret_cast<LEPUSCFunction *>(js_typed_array_constructor_GC),
-        name, 3, LEPUS_CFUNC_constructor_magic, i, typed_array_base_func);
+    func_obj = JS_NewCFunction3(ctx, ft.generic, name, 3,
+                                LEPUS_CFUNC_constructor_magic, i,
+                                typed_array_base_func);
     block_scope.PushHandle(&func_obj, HANDLE_TYPE_LEPUS_VALUE);
     JS_NewGlobalCConstructor2(ctx, func_obj, name, ctx->class_proto[i]);
     JS_DefinePropertyValueStr_GC(

@@ -1398,8 +1398,8 @@ static inline LEPUSValue LEPUS_NewCFunctionMagic(LEPUSContext *ctx,
                                                  const char *name, int length,
                                                  LEPUSCFunctionEnum cproto,
                                                  int magic) {
-  return LEPUS_NewCFunction2(ctx, (LEPUSCFunction *)func, name, length, cproto,
-                             magic);
+  LEPUSCFunctionType ft = {.generic_magic = func};
+  return LEPUS_NewCFunction2(ctx, ft.generic, name, length, cproto, magic);
 }
 
 /* C property definition */

@@ -4588,8 +4588,10 @@ QJS_HIDE LEPUSValue JS_NewObjectFromShape(LEPUSContext *ctx, JSShape *sh,
   p->u.opaque = NULL;
   p->shape = sh;
 #ifdef ENABLE_CHECK_TOOLS
-  p->ctx = ctx;
-  p->tid = get_tid();
+  if (ctx->object_ctx_check) {
+    p->ctx = ctx;
+    p->tid = get_tid();
+  }
 #endif
   p->prop = static_cast<JSProperty *>(
       lepus_malloc(ctx, sizeof(JSProperty) * sh->prop_size));
@@ -31547,8 +31549,10 @@ LEPUSValue js_create_function(LEPUSContext *ctx, JSFunctionDef *fd) {
 
   b->stack_size = stack_size;
 #ifdef ENABLE_CHECK_TOOLS
-  b->ctx = ctx;
-  b->tid = get_tid();
+  if (ctx->object_ctx_check) {
+    b->ctx = ctx;
+    b->tid = get_tid();
+  }
 #endif
 
   if (fd->js_mode & JS_MODE_STRIP) {
@@ -56198,7 +56202,7 @@ void CheckObjectRt(LEPUSRuntime *rt, LEPUSValue obj) {
   list_for_each_safe(el, el1, &rt->context_list) {
     ctx = list_entry(el, LEPUSContext, link);
   }
-  if (ctx && ctx->object_ctx_check) {
+  if (ctx) {
     CheckObjectCtx(ctx, obj);
   }
 }

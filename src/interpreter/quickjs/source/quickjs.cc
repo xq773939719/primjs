@@ -6836,7 +6836,7 @@ void build_backtrace_frame(LEPUSContext *ctx, LEPUSStackFrame *sf, DynBuf *dbuf,
       dbuf_printf(
           dbuf, " (%s",
           JS_AtomGetStr(ctx, atom_buf, sizeof(atom_buf), b->debug.filename));
-      if (b->function_id == 0 || ctx->debugger_mode) {
+      if (b->function_id == 0 || (ctx->debugger_mode && b->debug.pc2line_buf)) {
         // output actual line and column number
         if (line_num1 != -1) {
           // <Primjs begin>

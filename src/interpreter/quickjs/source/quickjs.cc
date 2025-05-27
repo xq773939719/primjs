@@ -16034,7 +16034,7 @@ void DebuggerCallEachFunc(LEPUSContext *ctx, const uint8_t *pc) {
   // in other situations, there is no need to call inspectorcheck
   if (ctx->debugger_need_polling || info->pause_on_next_statement) {
     ctx->debugger_info->debugger_current_pc = pc;
-    ctx->rt->debugger_callbacks_.inspector_check(ctx);
+    DoInspectorCheck(ctx);
   }
 #ifdef ENABLE_COMPATIBLE_MM
   if (ctx->gc_enable) ctx->rt->gc->ResetForbidGC();
@@ -16056,7 +16056,7 @@ void DebuggerCallEachOp(LEPUSContext *ctx, const uint8_t *pc,
   // 2. current position hits a breakpoint
   ctx->debugger_info->debugger_current_pc = pc;
   if (info->step_type || (b->bp_num && info->break_bytecode_map.count(pc))) {
-    ctx->rt->debugger_callbacks_.inspector_check(ctx);
+    DoInspectorCheck(ctx);
   }
 #ifdef ENABLE_COMPATIBLE_MM
   if (ctx->gc_enable) {

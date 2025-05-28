@@ -4591,6 +4591,9 @@ QJS_HIDE LEPUSValue JS_NewObjectFromShape(LEPUSContext *ctx, JSShape *sh,
   if (ctx->object_ctx_check) {
     p->ctx = ctx;
     p->tid = get_tid();
+  } else {
+    p->ctx = nullptr;
+    p->tid = 0;
   }
 #endif
   p->prop = static_cast<JSProperty *>(
@@ -31552,6 +31555,9 @@ LEPUSValue js_create_function(LEPUSContext *ctx, JSFunctionDef *fd) {
   if (ctx->object_ctx_check) {
     b->ctx = ctx;
     b->tid = get_tid();
+  } else {
+    b->ctx = nullptr;
+    b->tid = 0;
   }
 #endif
 

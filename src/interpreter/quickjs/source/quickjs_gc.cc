@@ -2735,6 +2735,9 @@ QJS_HIDE LEPUSValue JS_NewObjectFromShape_GC(LEPUSContext *ctx, JSShape *sh,
   if (ctx->object_ctx_check) {
     p->ctx = ctx;
     p->tid = get_tid();
+  } else {
+    p->ctx = nullptr;
+    p->tid = 0;
   }
 #endif
 

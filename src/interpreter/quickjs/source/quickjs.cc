@@ -47343,12 +47343,11 @@ QJS_STATIC uint32_t map_hash_key(LEPUSContext *ctx, LEPUSValueConst key) {
 
 QJS_STATIC JSMapRecord *map_find_record(LEPUSContext *ctx, JSMapState *s,
                                         LEPUSValueConst key) {
-  struct list_head *el;
+  struct list_head *el, *el1;
   JSMapRecord *mr;
   uint32_t h;
-
   h = map_hash_key(ctx, key) & (s->hash_size - 1);
-  list_for_each(el, &s->hash_table[h]) {
+  list_for_each_safe(el, el1, &s->hash_table[h]) {
     mr = list_entry(el, JSMapRecord, hash_link);
     if (js_same_value_zero(ctx, mr->key, key)) return mr;
   }

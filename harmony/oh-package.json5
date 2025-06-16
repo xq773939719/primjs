@@ -1,0 +1,11 @@
+{
+  "modelVersion": "5.0.4",
+  "description": "A JavaScript Engine Optimized for Lynx",
+  "dependencies": {
+  },
+  "scripts": {
+    "prepare": "./scripts/build.py --build_napi_v8 --modules primjs --publish_har --build_type Release --build_napi_adapter"
+  },
+  "devDependencies": {
+  }
+}

@@ -81,13 +81,21 @@ if(ENABLE_CHECK_TOOLS MATCHES ${REGEX_TRUE})
   add_definitions(-DENABLE_CHECK_TOOLS)
 endif()
 
+if(ENABLE_PRIMJS_HARMONY)
+  set(PLATFORM_ABI ${OHOS_ARCH})
+  add_definitions(-DOS_HARMONY)
+else()
 if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(PLATFORM_ABI ${ANDROID_ABI})
   add_definitions(-DOS_ANDROID=1)
 endif()
+endif()
+
+
 # primjs snapshot version
-if(${ENABLE_PRIMJS_SNAPSHOT} AND (${ANDROID_ABI} MATCHES "arm64"))
+if(${ENABLE_PRIMJS_SNAPSHOT} AND (${PLATFORM_ABI} MATCHES "arm64"))
   add_definitions(-DENABLE_PRIMJS_SNAPSHOT)
-  if(${ENABLE_COMPATIBLE_MM} AND (${ANDROID_ABI} MATCHES "arm64"))
+  if(${ENABLE_COMPATIBLE_MM} AND (${PLATFORM_ABI} MATCHES "arm64"))
     add_definitions(-DENABLE_COMPATIBLE_MM)
   endif()
   if(${ENABLE_QUICKJS_DEBUGGER})
@@ -103,7 +111,7 @@ else()
 endif()
 
 # armeabi can't use fenv.h/fesetround()
-if(${ANDROID_ABI} MATCHES " armeabi ")
+if(${PLATFORM_ABI} MATCHES " armeabi ")
   add_definitions(-DLYNX_ARMEABI=0)
 endif()
 
@@ -201,7 +209,13 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/napi/v8
   ${CMAKE_CURRENT_SOURCE_DIR}/src/napi/adapter)
 
-set(JS_V8_HEADERS ${CMAKE_SOURCE_DIR}/../../third_party/v8/include)
+if (ENABLE_PRIMJS_HARMONY)
+  set(PRIMJS_ROOT_DIR ${CMAKE_SOURCE_DIR}/../../..)
+else()
+  set(PRIMJS_ROOT_DIR ${CMAKE_SOURCE_DIR}/../..)
+endif()
+
+set(JS_V8_HEADERS ${PRIMJS_ROOT_DIR}/third_party/v8/include)
 
 set(quickjs_sources ${quickjs_sources} ${qucikjs_debugger_sources}
                     ${primjs_embedded_sources})
@@ -245,13 +259,19 @@ if(ENABLE_BUILD_AAR)
   add_library(napi SHARED ${napi_sources})
   add_library(napi_v8 SHARED ${napi_v8_sources})
   add_library(napi_adapter SHARED ${napi_adapter_sources})
-  find_library(log_lib log)
+  if (ENABLE_PRIMJS_HARMONY)
+    find_library(log_lib "hilog_ndk.z")
+    set(JS_V8_LIBRARY ${CMAKE_SOURCE_DIR}/../../../v8so/harmony/libs/${OHOS_ARCH}/libv8_libfull.so)
+  else()
+    find_library(log_lib log)
+    set(JS_V8_LIBRARY ${JS_V8_LIBRARY}/${ANDROID_ABI}/libv8_libfull.cr.so)
+  endif()
+
   target_link_libraries(quick ${log_lib})
   target_link_libraries(napi quick)
   target_link_libraries(napi ${log_lib})
   target_include_directories(napi_v8 PRIVATE ${JS_V8_HEADERS})
-  target_link_libraries(
-    napi_v8 PUBLIC ${JS_V8_LIBRARY}/${ANDROID_ABI}/libv8_libfull.cr.so)
+  target_link_libraries(napi_v8 PUBLIC ${JS_V8_LIBRARY})
   target_link_libraries(napi_adapter napi)
 endif()
 

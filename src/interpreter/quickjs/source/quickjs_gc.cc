@@ -32031,7 +32031,12 @@ void GarbageCollector::UpdateGCInfo(size_t heapsize_before, int64_t duration) {
     list_for_each_safe(el, el1, &rt_->context_list) {
       ctx = list_entry(el, LEPUSContext, link);
     }
-    rt_->update_gc_info(ctx, gc_info.str().c_str(), info_size);
+    std::string gc_info_str = gc_info.str();
+    rt_->update_gc_info(ctx, gc_info_str.c_str(), info_size);
+    GCObserver *observer = static_cast<GCObserver *>(rt_->gc_observer);
+    if (observer) {
+      observer->OnGC(std::move(gc_info_str));
+    }
     gc_info.str("");
     info_size = 0;
   } else {

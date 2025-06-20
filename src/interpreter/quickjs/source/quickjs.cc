@@ -56148,6 +56148,20 @@ void UpdateOuterObjSize(LEPUSRuntime *rt, int size) {
 #endif
 }
 
+void LEPUS_SetGCObserver(LEPUSRuntime *rt, void *opaque) {
+#ifdef ENABLE_COMPATIBLE_MM
+  rt->gc_observer = opaque;
+#endif
+}
+
+void *LEPUS_GetGCObserver(LEPUSRuntime *rt) {
+#ifdef ENABLE_COMPATIBLE_MM
+  return rt->gc_observer;
+#else
+  return nullptr;
+#endif
+}
+
 #ifdef ENABLE_CHECK_TOOLS
 pid_t get_tid() {
 #if defined(ANDROID) || defined(__ANDROID__)

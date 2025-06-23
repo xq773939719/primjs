@@ -66,6 +66,19 @@ class PtrHandles {
   void ResizeHandles();
 };
 
+class CheckTools {
+ public:
+  CheckTools();
+  ~CheckTools();
+  bool PushTid(int tid);
+  bool IsValidTid(int tid);
+
+ private:
+  int tid_idx;
+  int tid_size;
+  int *tids;
+};
+
 class HandleScope {
  public:
   HandleScope(LEPUSRuntime *rt);

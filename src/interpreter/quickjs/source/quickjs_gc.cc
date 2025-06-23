@@ -1511,6 +1511,9 @@ void JS_FreeContext_GC(LEPUSContext *ctx) {
     delete ctx->napi_scope;
     ctx->napi_scope = nullptr;
   }
+  if (ctx->object_ctx_check && ctx->check_tools) {
+    delete ctx->check_tools;
+  }
   system_free(ctx);
 }
 
@@ -33725,4 +33728,35 @@ void __attribute__((noinline)) PtrHandles::ResizeHandles() {
   if (!new_handles) assert(false);
   handles = new_handles;
   handle_size = new_size;
+}
+
+CheckTools::CheckTools() : tid_idx(0), tid_size(3) {
+  tids = static_cast<int *>(system_malloc(tid_size * sizeof(int)));
+  if (!tids) assert(false);
+}
+CheckTools::~CheckTools() {
+  if (tids) system_free(tids);
+}
+
+bool CheckTools::PushTid(int tid) {
+  if (tid_idx == tid_size - 1) {
+    int new_size = tid_size * 2;
+    int *new_tids =
+        static_cast<int *>(system_realloc(tids, new_size * sizeof(int)));
+    if (!new_tids) assert(false);
+    tids = new_tids;
+    tid_size = new_size;
+  }
+  tids[tid_idx] = tid;
+  tid_idx++;
+  return true;
+}
+
+bool CheckTools::IsValidTid(int tid) {
+  for (int i = 0; i < tid_idx; i++) {
+    if (tid == tids[i]) {
+      return true;
+    }
+  }
+  return false;
 }

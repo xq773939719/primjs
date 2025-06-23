@@ -2088,6 +2088,10 @@ void LEPUS_FreeContext(LEPUSContext *ctx) {
 
   lepus_free(ctx, ctx->lynx_target_sdk_version);
 
+  if (ctx->object_ctx_check && ctx->check_tools) {
+    delete ctx->check_tools;
+  }
+
   ctx->fg_ctx->ctx = nullptr;
   free_finalization_registry_context(ctx->rt, ctx->fg_ctx);
   lepus_free_rt(ctx->rt, ctx);
@@ -56137,7 +56141,22 @@ void InitLynxTraceEnv(void *(*begin)(const char *), void (*end)(void *ptr)) {
 
 void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable) {
   ctx->object_ctx_check = enable;
+  if (enable) {
+    ctx->check_tools = new CheckTools();
+  }
   return;
+}
+
+bool LEPUS_PushObjectCheckTid(LEPUSContext *ctx) {
+#ifdef ENABLE_CHECK_TOOLS
+  if (!ctx->object_ctx_check || ctx->check_tools == nullptr) {
+    return false;
+  }
+  pid_t cur_tid = get_tid();
+  return ctx->check_tools->PushTid(static_cast<int>(cur_tid));
+#else
+  return false;
+#endif
 }
 
 void UpdateOuterObjSize(LEPUSRuntime *rt, int size) {
@@ -56199,14 +56218,19 @@ void CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj) {
 #endif
       abort();
     }
+    pid_t obj_tid = 0;
+    if (LEPUS_VALUE_IS_OBJECT(obj)) {
+      obj_tid = LEPUS_VALUE_GET_OBJ(obj)->tid;
+    } else if (LEPUS_VALUE_IS_FUNCTION_BYTECODE(obj)) {
+      obj_tid =
+          static_cast<LEPUSFunctionBytecode *>(LEPUS_VALUE_GET_PTR(obj))->tid;
+    }
     pid_t tid = get_tid();
-    bool inconsistent_tid =
-        (LEPUS_VALUE_IS_OBJECT(obj) && LEPUS_VALUE_GET_OBJ(obj)->tid &&
-         (LEPUS_VALUE_GET_OBJ(obj)->tid) != tid) ||
-        (LEPUS_VALUE_IS_FUNCTION_BYTECODE(obj) &&
-         static_cast<LEPUSFunctionBytecode *>(LEPUS_VALUE_GET_PTR(obj))->tid &&
-         static_cast<LEPUSFunctionBytecode *>(LEPUS_VALUE_GET_PTR(obj))->tid !=
-             tid);
+    bool inconsistent_tid = false;
+    if (obj_tid) {
+      inconsistent_tid =
+          (obj_tid != tid) && !(ctx->check_tools->IsValidTid((int)obj_tid));
+    }
 
     if (inconsistent_tid) {
 #if defined(ANDROID) || defined(__ANDROID__)

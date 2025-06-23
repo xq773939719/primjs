@@ -306,6 +306,7 @@ typedef struct SettingsOption {
 class GlobalHandles;
 class GarbageCollector;
 class PtrHandles;
+class CheckTools;
 class ByteThreadPool;
 class NAPIHandleScope;
 
@@ -795,6 +796,7 @@ struct LEPUSContext {
   bool gc_enable;
   bool is_lepusng;
   bool object_ctx_check;
+  CheckTools *check_tools;
 };
 
 typedef union JSFloat64Union {

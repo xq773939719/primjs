@@ -16956,6 +16956,20 @@ __exception int js_get_length32_gc(LEPUSContext *ctx, uint32_t *pres,
   return JS_ToUint32Free(ctx, pres, len_val);
 }
 
+LEPUSValue js_get_length(LEPUSContext *ctx, LEPUSValueConst obj) {
+  LEPUSValue len_val;
+
+  LEPUSObject *p = (LEPUSObject *)LEPUS_VALUE_GET_OBJ(obj);
+  // Array's length must exist and the idx is 0
+  if (likely(LEPUS_VALUE_IS_OBJECT(obj) && p->class_id == JS_CLASS_ARRAY)) {
+    len_val = p->prop[0].u.value;
+  } else {
+    len_val = JS_GetPropertyInternal_GC(ctx, obj, JS_ATOM_length, obj, 0);
+  }
+
+  return len_val;
+}
+
 static __exception int js_get_length64(LEPUSContext *ctx, int64_t *pres,
                                        LEPUSValueConst obj) {
   LEPUSValue len_val;
@@ -31199,6 +31213,19 @@ LEPUSValue prim_js_op_eval_gc(LEPUSContext *ctx, int scope_idx,
   return ret_val;
 }
 
+void prim_WriteBarrierNoStore(LEPUSValue value, LEPUSContext *ctx) {
+  // GC_TODO
+}
+
+void prim_HeapObjStoreLEPUSValue(void *fieldAddr, LEPUSValue value) {
+  *reinterpret_cast<LEPUSValue *>(fieldAddr) = value;
+}
+
+void prim_HeapObjStorePtr(void *dstObj, address_t offset, void *value) {
+  void *fieldAddr = (void *)((address_t)dstObj + offset);
+  *reinterpret_cast<address_t *>(fieldAddr) = (address_t)value;
+}
+
 void prim_close_var_refs_gc(LEPUSContext *ctx, LEPUSStackFrame *sf) {
   list_head *el;
   JSVarRef *var_ref;
@@ -33601,6 +33628,19 @@ void JS_FreeRuntimeForEffect(LEPUSRuntime *rt) {}
 
 char *LEPUS_GetGCTimingInfo(LEPUSContext *ctx, bool is_start) {
   return nullptr;
+}
+
+void prim_WriteBarrierNoStore(LEPUSValue value, LEPUSContext *ctx) {}
+void prim_HeapObjStoreLEPUSValue(void *fieldAddr, LEPUSValue value) {
+  *reinterpret_cast<LEPUSValue *>(fieldAddr) = value;
+}
+
+void prim_HeapObjStorePtr(void *dstObj, address_t offset, void *value) {
+  void *fieldAddr = (void *)((address_t)dstObj + offset);
+  *reinterpret_cast<address_t *>(fieldAddr) = (address_t)value;
+}
+LEPUSValue js_get_length(LEPUSContext *ctx, LEPUSValueConst obj) {
+  return LEPUS_UNDEFINED;
 }
 
 #endif  // ENABLE_COMPATIBLE_MM

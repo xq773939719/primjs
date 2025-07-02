@@ -122,6 +122,7 @@ size_t get_del_cnt(void *runtime, void *ptr);
 #endif
 
 #define __exception __attribute__((warn_unused_result))
+using address_t = uintptr_t;
 
 enum JS_CLASS_ID {
   /* classid tag        */ /* union usage   | properties */
@@ -1830,6 +1831,10 @@ QJS_HIDE JSProperty *add_property(LEPUSContext *ctx, LEPUSObject *p,
                                   JSAtom prop, int prop_flags);
 QJS_HIDE JSProperty *add_property_gc(LEPUSContext *ctx, LEPUSObject *p,
                                      JSAtom prop, int prop_flags);
+QJS_HIDE void prim_WriteBarrierNoStore(LEPUSValue value, LEPUSContext *ctx);
+QJS_HIDE void prim_HeapObjStoreLEPUSValue(void *fieldAddr, LEPUSValue value);
+QJS_HIDE void prim_HeapObjStorePtr(void *dstObj, address_t offset, void *value);
+QJS_HIDE LEPUSValue js_get_length(LEPUSContext *ctx, LEPUSValueConst obj);
 QJS_HIDE LEPUSValue prim_js_op_eval(LEPUSContext *ctx, int scope_idx,
                                     LEPUSValue op1);
 QJS_HIDE LEPUSValue prim_js_op_eval_gc(LEPUSContext *ctx, int scope_idx,

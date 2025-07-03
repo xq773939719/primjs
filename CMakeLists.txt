@@ -185,6 +185,12 @@ set(napi_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/src/napi/napi_module.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/napi/napi.cc)
 
+if(ENABLE_PRIMJS_HARMONY)
+set(primjs_harmony_napi_source
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/napi/harmony/js_native_api_harmony.cc)
+set(napi_sources ${napi_sources} ${primjs_harmony_napi_source})
+endif()
+
 if(${ENABLE_CODECACHE})
   add_definitions(-DENABLE_CODECACHE)
 
@@ -263,6 +269,7 @@ if(ENABLE_BUILD_AAR)
   add_library(napi_adapter SHARED ${napi_adapter_sources})
   if (ENABLE_PRIMJS_HARMONY)
     find_library(log_lib "hilog_ndk.z")
+    find_library(libm m)
     set(JS_V8_LIBRARY ${CMAKE_SOURCE_DIR}/../../../v8so/harmony/libs/${OHOS_ARCH}/libv8_libfull.so)
   else()
     find_library(log_lib log)
@@ -270,8 +277,10 @@ if(ENABLE_BUILD_AAR)
   endif()
 
   target_link_libraries(quick ${log_lib})
-  target_link_libraries(napi quick)
-  target_link_libraries(napi ${log_lib})
+  target_link_libraries(napi quick ${log_lib})
+  if (ENABLE_PRIMJS_HARMONY)
+    target_link_libraries(napi ${libm} libace_napi.z.so libjsvm.so)
+  endif()
   target_include_directories(napi_v8 PRIVATE ${JS_V8_HEADERS})
   target_link_libraries(napi_v8 PUBLIC ${JS_V8_LIBRARY})
   target_link_libraries(napi_adapter napi)

@@ -1,5 +1,5 @@
 {
-  "modelVersion": "5.0.4",
+  "modelVersion": "5.0.3",
   "description": "A JavaScript Engine Optimized for Lynx",
   "dependencies": {
   },

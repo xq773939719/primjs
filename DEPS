@@ -106,6 +106,11 @@ deps = {
         "ignore_in_git": True,
         "decompress": False,
     },
+    "v8so/harmony": {
+        "type": "http",
+        "url": f"https://github.com/lynx-family/v8-build/releases/download/0.0.2/v8so_harmony.zip",
+        "ignore_in_git": True,
+    },
     # The libcxx and libcxxabi are pulled from llvm upstream.
     # They are used when `use_flutter_cxx` is true.
     "third_party/libcxx": {

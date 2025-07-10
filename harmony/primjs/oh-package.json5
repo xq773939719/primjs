@@ -1,8 +1,8 @@
 {
   "name": "@lynx/primjs",
   "description": "A JavaScript Engine Optimized for Lynx",
-  "repository": "git@github.com:lynx-family/primjs.git",
-  "main": "",
+  "repository": "https://github.com/lynx-family/primjs.git",
+  "main": "Index.ets",
   "author": "lynx",
   "license": "Apache-2.0",
   "dependencies": {},

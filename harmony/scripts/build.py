@@ -70,13 +70,14 @@ def run_package_har(module_name, module_path, verbose):
     check_call(cmd, shell=True, cwd=HARMONY_DIR)
     # as even hvigor build failed, it still return value 0, so we need to check har file exist or not
     har_path = os.path.join(HARMONY_DIR, module_path, 'build', 'default', 'outputs', 'default', f'{module_name}.har')
+    print(f'har_path is {har_path}')
     if not os.path.isfile(har_path):
         raise Exception('har file not found, please check your build')
 
 def do_publish(har_path):
     print(f'start publish {har_path}.')
 
-    cmd = f'ohpm -v publish {har_path}'
+    cmd = f'ohpm publish {har_path}'
 
     check_call(cmd, shell=True, cwd=HARMONY_DIR)
 

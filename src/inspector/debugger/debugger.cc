@@ -1051,16 +1051,54 @@ QJS_STATIC void CommonLog(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
   if (!debugger_info || LEPUS_IsNull(debugger_info->console.messages) ||
       debugger_info->eval_throw_on_side_effect)
     return;
-  const char *tag_table[] = {"log", "info", "debug", "error", "warning", "log",
-                             "",    "",     "log",   "",      "timeEnd"};
+  const char *tag_table[] = {"log",
+                             "info",
+                             "debug",
+                             "error",
+                             "warning",
+                             "log",
+                             "",
+                             "",
+                             "log",
+                             "table",
+                             "clear",
+                             "startGroup",
+                             "startGroupCollapsed",
+                             "endGroup"};
   const char *tag = tag_table[magic];
   if (*tag == '\0') return;
+  int real_param = 0;
   LEPUSValue console_msg = LEPUS_NewArray(ctx);
   HandleScope func_scope{ctx, &console_msg, HANDLE_TYPE_LEPUS_VALUE};
-  char *gid = nullptr;
+  if (argc == 0) {
+    char console_name[256];
+    switch (magic) {
+      case JS_CONSOLE_TABLE:
+        if (!ctx->rt->gc_enable) LEPUS_FreeValue(ctx, console_msg);
+        return;
+      case JS_CONSOLE_CLEAR:
+        snprintf(console_name, sizeof(console_name), "console.%s", "clear");
+        break;
+      case JS_CONSOLE_GROUP:
+        snprintf(console_name, sizeof(console_name), "console.%s", "group");
+        break;
+      case JS_CONSOLE_GROUPCOLLAPSED:
+        snprintf(console_name, sizeof(console_name), "console.%s",
+                 "groupCollapsed");
+        break;
+      case JS_CONSOLE_GROUPEND:
+        snprintf(console_name, sizeof(console_name), "console.%s", "groupEnd");
+        break;
+      default:
+        break;
+    }
+    LEPUSValue name = LEPUS_NewString(ctx, console_name);
+    HandleScope block_scope(ctx, &name, HANDLE_TYPE_LEPUS_VALUE);
+    LEPUS_SetPropertyUint32(ctx, console_msg, real_param++,
+                            LEPUS_DupValue(ctx, name));
+    if (!ctx->rt->gc_enable) LEPUS_FreeValue(ctx, name);
+  }
   int argc_idx;
-  int real_param = 0;
-  func_scope.PushHandle(&gid, HANDLE_TYPE_HEAP_OBJ);
   for (argc_idx = 0; argc_idx < argc; argc_idx++) {
     LEPUS_SetPropertyUint32(ctx, console_msg, real_param++,
                             LEPUS_DupValue(ctx, argv[argc_idx]));
@@ -1100,7 +1138,7 @@ QJS_STATIC void CommonLog(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
     console_message_cb(ctx, magic, argv, argc);
   }
 
-  if (ctx->console_inspect) {  // zys_todo
+  if (ctx->console_inspect) {
     OnConsoleMessageInspect(ctx, console_msg);
   }
   if (!ctx->rt->gc_enable) LEPUS_FreeValue(ctx, console_msg);
@@ -1110,6 +1148,178 @@ QJS_STATIC void CommonLog(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
 QJS_STATIC LEPUSValue DebuggerLog(LEPUSContext *ctx, LEPUSValueConst this_val,
                                   int argc, LEPUSValueConst *argv, int magic) {
   CommonLog(ctx, this_val, argc, argv, magic);
+  return LEPUS_UNDEFINED;
+}
+
+QJS_STATIC LEPUSValue ConsoleCount(LEPUSContext *ctx, LEPUSValueConst this_val,
+                                   int argc, LEPUSValueConst *argv) {
+  LEPUSDebuggerInfo *info = ctx->debugger_info;
+  if (info) {
+    HandleScope func_scope(ctx);
+    const char *label = "default";
+    if (argc > 0) {
+      label = LEPUS_ToCString(ctx, argv[0]);
+      func_scope.PushHandle(&label, HANDLE_TYPE_CSTRING);
+    }
+
+    info->count_map[label]++;
+
+    char output[256];
+    snprintf(output, sizeof(output), "%s: %d", label, info->count_map[label]);
+    LEPUSValue outputValue = LEPUS_NewString(ctx, output);
+    func_scope.PushHandle(&outputValue, HANDLE_TYPE_LEPUS_VALUE);
+    CommonLog(ctx, this_val, 1, &outputValue, JS_CONSOLE_LOG);
+
+    if (strcmp(label, "default") != 0 && !ctx->rt->gc_enable) {
+      LEPUS_FreeCString(ctx, const_cast<char *>(label));
+    }
+    if (!ctx->rt->gc_enable) {
+      LEPUS_FreeValue(ctx, outputValue);
+    }
+  }
+  return LEPUS_UNDEFINED;
+}
+
+QJS_STATIC LEPUSValue ConsoleCountReset(LEPUSContext *ctx,
+                                        LEPUSValueConst this_val, int argc,
+                                        LEPUSValueConst *argv) {
+  LEPUSDebuggerInfo *info = ctx->debugger_info;
+  if (info) {
+    HandleScope func_scope(ctx);
+    const char *label = "default";
+    if (argc > 0) {
+      label = LEPUS_ToCString(ctx, argv[0]);
+      func_scope.PushHandle(&label, HANDLE_TYPE_CSTRING);
+    }
+
+    if (info->count_map.find(label) == info->count_map.end()) {
+      char warningMsg[256];
+      snprintf(warningMsg, sizeof(warningMsg), "Count for '%s' does not exist",
+               label);
+      LEPUSValue warningValue = LEPUS_NewString(ctx, warningMsg);
+      HandleScope block_scope{ctx, &warningValue, HANDLE_TYPE_LEPUS_VALUE};
+      CommonLog(ctx, this_val, 1, &warningValue, JS_CONSOLE_WARN);
+      if (strcmp(label, "default") != 0 && !ctx->rt->gc_enable) {
+        LEPUS_FreeCString(ctx, const_cast<char *>(label));
+      }
+      if (!ctx->rt->gc_enable) {
+        LEPUS_FreeValue(ctx, warningValue);
+      }
+      return LEPUS_UNDEFINED;
+    }
+    info->count_map.erase(label);
+    if (strcmp(label, "default") != 0 && !ctx->rt->gc_enable) {
+      LEPUS_FreeCString(ctx, const_cast<char *>(label));
+    }
+  }
+  return LEPUS_UNDEFINED;
+}
+
+QJS_STATIC LEPUSValue ConsoleTime(LEPUSContext *ctx, LEPUSValueConst this_val,
+                                  int argc, LEPUSValueConst *argv) {
+  LEPUSDebuggerInfo *info = ctx->debugger_info;
+  if (info) {
+    HandleScope func_scope(ctx);
+    const char *timerName = "default";
+    if (argc > 0) {
+      timerName = LEPUS_ToCString(ctx, argv[0]);
+      func_scope.PushHandle(&timerName, HANDLE_TYPE_CSTRING);
+    }
+
+    if (info->timers.find(timerName) != info->timers.end()) {
+      char warningMsg[256];
+      snprintf(warningMsg, sizeof(warningMsg), "Timer '%s' already exists",
+               timerName);
+      LEPUSValue warningValue = LEPUS_NewString(ctx, warningMsg);
+      HandleScope block_scope{ctx, &warningValue, HANDLE_TYPE_LEPUS_VALUE};
+      CommonLog(ctx, this_val, 1, &warningValue, JS_CONSOLE_WARN);
+      if (strcmp(timerName, "default") != 0 && !ctx->rt->gc_enable) {
+        LEPUS_FreeCString(ctx, const_cast<char *>(timerName));
+      }
+      if (!ctx->rt->gc_enable) {
+        LEPUS_FreeValue(ctx, warningValue);
+      }
+      return LEPUS_UNDEFINED;
+    }
+
+    info->timers[timerName] = std::chrono::high_resolution_clock::now();
+    if (strcmp(timerName, "default") != 0 && !ctx->rt->gc_enable) {
+      LEPUS_FreeCString(ctx, const_cast<char *>(timerName));
+    }
+  }
+  return LEPUS_UNDEFINED;
+}
+
+QJS_STATIC LEPUSValue ConsoleTimeLog(LEPUSContext *ctx,
+                                     LEPUSValueConst this_val, int argc,
+                                     LEPUSValueConst *argv) {
+  LEPUSDebuggerInfo *info = ctx->debugger_info;
+  if (info) {
+    HandleScope func_scope(ctx);
+    const char *timerName = "default";
+    if (argc > 0) {
+      timerName = LEPUS_ToCString(ctx, argv[0]);
+      func_scope.PushHandle(&timerName, HANDLE_TYPE_CSTRING);
+    }
+
+    auto it = info->timers.find(timerName);
+    if (it == info->timers.end()) {
+      char warningMsg[256];
+      snprintf(warningMsg, sizeof(warningMsg), "Timer '%s' does not exist",
+               timerName);
+      LEPUSValue warningValue = LEPUS_NewString(ctx, warningMsg);
+      HandleScope block_scope{ctx, &warningValue, HANDLE_TYPE_LEPUS_VALUE};
+      CommonLog(ctx, this_val, 1, &warningValue, JS_CONSOLE_WARN);
+      if (strcmp(timerName, "default") != 0 && !ctx->rt->gc_enable) {
+        LEPUS_FreeCString(ctx, const_cast<char *>(timerName));
+      }
+      if (!ctx->rt->gc_enable) {
+        LEPUS_FreeValue(ctx, warningValue);
+      }
+      return LEPUS_UNDEFINED;
+    }
+
+    auto now = std::chrono::high_resolution_clock::now();
+    auto duration =
+        std::chrono::duration<double>(now - it->second).count() * 1000;
+
+    char output[256];
+    snprintf(output, sizeof(output), "%s: %.10f ms", timerName, duration);
+    LEPUSValue outputValue = LEPUS_NewString(ctx, output);
+    func_scope.PushHandle(&outputValue, HANDLE_TYPE_LEPUS_VALUE);
+    CommonLog(ctx, this_val, 1, &outputValue, JS_CONSOLE_LOG);
+
+    if (strcmp(timerName, "default") != 0 && !ctx->rt->gc_enable) {
+      LEPUS_FreeCString(ctx, const_cast<char *>(timerName));
+    }
+    if (!ctx->rt->gc_enable) {
+      LEPUS_FreeValue(ctx, outputValue);
+    }
+  }
+  return LEPUS_UNDEFINED;
+}
+
+QJS_STATIC LEPUSValue ConsoleTimeEnd(LEPUSContext *ctx,
+                                     LEPUSValueConst this_val, int argc,
+                                     LEPUSValueConst *argv) {
+  ConsoleTimeLog(ctx, this_val, argc, argv);
+  LEPUSDebuggerInfo *info = ctx->debugger_info;
+  if (info) {
+    HandleScope func_scope(ctx);
+    const char *timerName = "default";
+    if (argc > 0) {
+      timerName = LEPUS_ToCString(ctx, argv[0]);
+      func_scope.PushHandle(&timerName, HANDLE_TYPE_CSTRING);
+    }
+
+    auto it = info->timers.find(timerName);
+    if (it != info->timers.end()) {
+      info->timers.erase(it);
+    }
+    if (strcmp(timerName, "default") != 0 && !ctx->rt->gc_enable) {
+      LEPUS_FreeCString(ctx, const_cast<char *>(timerName));
+    }
+  }
   return LEPUS_UNDEFINED;
 }
 
@@ -1127,8 +1337,15 @@ QJS_HIDE void JS_AddIntrinsicConsole(LEPUSContext *ctx) {
   DebuggerSetPropertyStr(ctx, console, name, cfunc);
   QJSDebuggerRegisterConsole(RegisterConsole)
 #undef RegisterConsole
-      if (ctx->debugger_info &&
-          LEPUS_IsNull(ctx->debugger_info->console.messages)) {
+
+#define RegisterConsole2(func, name)              \
+  cfunc = LEPUS_NewCFunction(ctx, func, name, 0); \
+  DebuggerSetPropertyStr(ctx, console, name, cfunc);
+      QJSDebuggerRegisterConsole2(RegisterConsole2)
+#undef RegisterConsole2
+
+          if (ctx->debugger_info &&
+              LEPUS_IsNull(ctx->debugger_info->console.messages)) {
     ctx->debugger_info->console.messages = LEPUS_NewArray(ctx);
     ctx->debugger_info->console.length = 0;
   }

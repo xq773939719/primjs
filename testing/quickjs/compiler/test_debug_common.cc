@@ -1456,8 +1456,6 @@ TEST_F(QjsDebugMethods, QJSDebugTestConsole) {
     console.profile("");
     console.profileEnd("");
     console.report("log");
-    console.time("");
-    console.timeEnd("timeEnd");
   }
   test();
   )";
@@ -1481,12 +1479,11 @@ TEST_F(QjsDebugMethods, QJSDebugTestConsole) {
     QjsDebugQueue::GetReceiveMessageQueue().pop();
   }
 
-  const char* tag_table_test[] = {"log",     "info", "debug",  "error",
-                                  "warning", "log",  "",       "",
-                                  "log",     "",     "timeEnd"};
+  const char* tag_table_test[] = {"log", "info", "debug", "error", "warning",
+                                  "log", "",     "",      "log"};
   LEPUSValue val = LEPUS_UNDEFINED;
   HandleScope func_scope(ctx_, &val, HANDLE_TYPE_LEPUS_VALUE);
-  for (size_t i = 0; i < 11; i++) {
+  for (size_t i = 0; i < 9; i++) {
     std::string message = QjsDebugQueue::GetReceiveMessageQueue().front();
     val = LEPUS_ParseJSON(ctx_, message.c_str(), message.length(), "");
     LEPUSValue params = LEPUS_GetPropertyStr(ctx_, val, "params");

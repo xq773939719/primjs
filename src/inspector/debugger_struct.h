@@ -36,10 +36,12 @@
 #include <stdint.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "quickjs/include/list.h"
 extern "C" {
@@ -212,6 +214,9 @@ typedef struct DebuggerFixeShapeObj {
   LEPUSValue preview_prop;
 } DebuggerFixeShapeObj;
 
+using Timer = std::chrono::time_point<std::chrono::high_resolution_clock>;
+using TimerMap = std::unordered_map<std::string, Timer>;
+
 // data structure of debugger info
 struct LEPUSDebuggerInfo {
   // Ctor
@@ -275,6 +280,9 @@ struct LEPUSDebuggerInfo {
   // if profiling is started, true after Profiler.start
   bool is_profiling_started{false};
   bool eval_throw_on_side_effect{false};
+  // for console apis
+  std::unordered_map<std::string, int> count_map;
+  TimerMap timers;
 };
 
 #define QJSDebuggerRegisterConsole(V) \
@@ -287,8 +295,18 @@ struct LEPUSDebuggerInfo {
   V("profile", PROFILE)               \
   V("profileEnd", PROFILEEND)         \
   V("report", REPORT)                 \
-  V("time", TIME)                     \
-  V("timeEnd", TIMEEND)
+  V("table", TABLE)                   \
+  V("clear", CLEAR)                   \
+  V("group", GROUP)                   \
+  V("groupCollapsed", GROUPCOLLAPSED) \
+  V("groupEnd", GROUPEND)
+
+#define QJSDebuggerRegisterConsole2(V) \
+  V(ConsoleCount, "count")             \
+  V(ConsoleCountReset, "countReset")   \
+  V(ConsoleTime, "time")               \
+  V(ConsoleTimeLog, "timeLog")         \
+  V(ConsoleTimeEnd, "timeEnd")
 
 enum {
 #define ConsoleEnum(name, type) JS_CONSOLE_##type,

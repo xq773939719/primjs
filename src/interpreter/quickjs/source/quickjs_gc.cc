@@ -1092,25 +1092,6 @@ static void *js_def_reallocate_gc(JSMallocState *s, void *ptr, size_t size,
   return ret;
 }
 
-static const LEPUSMallocFunctions def_malloc_funcs = {
-    js_def_malloc,
-    js_def_free,
-    js_def_realloc,
-#if defined(__APPLE__)
-    malloc_size,
-#elif defined(_WIN32)
-    (size_t(*)(const void *))_msize,
-#elif defined(EMSCRIPTEN)
-    NULL,
-#elif defined(__linux__)
-    (size_t(*)(const void *))malloc_usable_size,
-#else
-    /* change this to `NULL,` if compilation
-       fails */
-    malloc_usable_size,
-#endif
-};
-
 static const LEPUSMallocFunctions def_allocate_funcs = {
     js_def_allocate,
     js_def_gcfree,

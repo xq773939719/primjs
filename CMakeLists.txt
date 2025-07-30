@@ -50,10 +50,25 @@ endif()
 set(CMAKE_C_FLAGS ${CMAKE_COMMON_FLAGS} ${CMAKE_C_FLAGS})
 set(CMAKE_CXX_FLAGS "${CMAKE_COMMON_FLAGS} ${CMAKE_CXX_FLAGS} -std=c++17")
 
-set(CMAKE_SHARED_LINKER_FLAGS
-    "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-Bsymbolic -Wl,--warn-shared-textrel \
-    -Wl,--exclude-libs,ALL,--gc-sections -Wl,--build-id=sha1 -O2 -flto \
-    -Wl,--icf=all -Wl,-Map=output.map")
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+  if(${ANDROID_ABI} MATCHES "arm64-v8a" OR ${ANDROID_ABI} MATCHES "x86_64")
+    set(CMAKE_SHARED_LINKER_FLAGS
+        "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-Bsymbolic -Wl,--warn-shared-textrel \
+        -Wl,--exclude-libs,ALL,--gc-sections -Wl,--build-id=sha1 -O2 -flto \
+        -Wl,--icf=all -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384 \
+        -Wl,-Map=output.map")
+  else()
+    set(CMAKE_SHARED_LINKER_FLAGS
+        "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-Bsymbolic -Wl,--warn-shared-textrel \
+        -Wl,--exclude-libs,ALL,--gc-sections -Wl,--build-id=sha1 -O2 -flto \
+        -Wl,--icf=all -Wl,-Map=output.map")
+  endif()
+else()
+  set(CMAKE_SHARED_LINKER_FLAGS
+      "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-Bsymbolic -Wl,--warn-shared-textrel \
+      -Wl,--exclude-libs,ALL,--gc-sections -Wl,--build-id=sha1 -O2 -flto \
+      -Wl,--icf=all -Wl,-Map=output.map")
+endif()
 
 add_definitions(-DEMSCRIPTEN)
 

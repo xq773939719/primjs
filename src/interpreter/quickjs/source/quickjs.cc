@@ -54,7 +54,8 @@ extern "C" {
 
 #include <cstdint>
 #include <cstdlib>
-#if defined(ANDROID) || defined(__ANDROID__) || defined(OS_IOS)
+#if defined(ANDROID) || defined(__ANDROID__) || defined(OS_IOS) || \
+    defined(OS_HARMONY)
 #include <errno.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -56201,7 +56202,7 @@ void *LEPUS_GetGCObserver(LEPUSRuntime *rt) {
 
 #ifdef ENABLE_CHECK_TOOLS
 pid_t get_tid() {
-#if defined(ANDROID) || defined(__ANDROID__)
+#if defined(ANDROID) || defined(__ANDROID__) || defined(OS_HARMONY)
   return syscall(SYS_gettid);
 #elif defined(OS_IOS)
   uint64_t tid64;

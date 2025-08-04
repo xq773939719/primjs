@@ -1568,10 +1568,10 @@ QJS_STATIC LEPUSValue FindClosureVar(struct LEPUSStackFrame* sf,
     struct LEPUSFunctionBytecode* b = f->u.func.function_bytecode;
 
     if (cvar->is_local) {
-      if (cvar->is_arg) {
+      if (cvar->is_arg && cvar->var_idx < b->arg_count) {
         if (!sf->arg_buf) return LEPUS_UNDEFINED;
         return sf->arg_buf[cvar->var_idx];
-      } else {
+      } else if (cvar->var_idx < b->var_count) {
         return sf->var_buf[cvar->var_idx];
       }
     }

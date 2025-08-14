@@ -12,7 +12,7 @@ This document documents the performance of PrimJS and QuickJS on [Octane Benchma
   gn gen out/Default --args='
      enable_quickjs_debugger=false
      enable_tracing_gc = true
-     enable_compatbile_mm = true
+     enable_compatible_mm = true
      enable_primjs_snapshot = true
      target_cpu = "arm64"
      target_os = "mac" 

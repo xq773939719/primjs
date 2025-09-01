@@ -32472,15 +32472,16 @@ QJS_STATIC __exception int js_parse_program(JSParseState *s) {
 }
 
 void js_parse_init(LEPUSContext *ctx, JSParseState *s, const char *input,
-                   size_t input_len, const char *filename) {
+                   size_t input_len, const char *filename,
+                   int start_line_number) {
   memset(s, 0, sizeof(*s));
   s->ctx = ctx;
   s->filename = filename;
-  s->line_num = 1;
+  s->line_num = 1 + start_line_number;
   s->buf_ptr = (const uint8_t *)input;
   s->buf_end = s->buf_ptr + input_len;
   s->token.val = ' ';
-  s->token.line_num = 1;
+  s->token.line_num = 1 + start_line_number;
 
   // <Primjs begin>
   s->last_line_begin_ptr = (const uint8_t *)input;
@@ -32566,7 +32567,8 @@ QJS_STATIC LEPUSValue __JS_EvalInternal(LEPUSContext *ctx,
                                         const char *input, size_t input_len,
                                         const char *filename, int flags,
                                         int scope_idx, bool debugger_eval,
-                                        LEPUSStackFrame *debugger_frame) {
+                                        LEPUSStackFrame *debugger_frame,
+                                        int start_line_number) {
   JSParseState s1, *s = &s1;
   int err, js_mode, eval_type;
   LEPUSValue fun_obj, ret_val;
@@ -32577,7 +32579,7 @@ QJS_STATIC LEPUSValue __JS_EvalInternal(LEPUSContext *ctx,
   LEPUSModuleDef *m;
   LEPUSScriptSource *script = nullptr;
 
-  js_parse_init(ctx, s, input, input_len, filename);
+  js_parse_init(ctx, s, input, input_len, filename, start_line_number);
   skip_shebang(s);
 
   eval_type =
@@ -32652,7 +32654,8 @@ QJS_STATIC LEPUSValue __JS_EvalInternal(LEPUSContext *ctx,
 #ifdef ENABLE_QUICKJS_DEBUGGER
   if (!debugger_eval && (ctx->debugger_parse_script || ctx->debugger_mode) &&
       !(flags & LEPUS_DEBUGGER_NO_PERSIST_SCRIPT)) {
-    DebuggerParseScript(ctx, input, input_len, fd, filename, s->line_num, err);
+    DebuggerParseScript(ctx, input, input_len, fd, filename, s->line_num, err,
+                        start_line_number);
     script = fd->script;
   }
 #endif
@@ -32698,12 +32701,13 @@ QJS_HIDE LEPUSValue JS_EvalInternal(LEPUSContext *ctx, LEPUSValueConst this_obj,
                                     const char *input, size_t input_len,
                                     const char *filename, int flags,
                                     int scope_idx, bool debugger_eval,
-                                    LEPUSStackFrame *sf) {
+                                    LEPUSStackFrame *sf,
+                                    int start_line_number) {
   if (unlikely(!ctx->eval_internal)) {
     return LEPUS_ThrowTypeError(ctx, "eval is not supported");
   }
   return ctx->eval_internal(ctx, this_obj, input, input_len, filename, flags,
-                            scope_idx, debugger_eval, sf);
+                            scope_idx, debugger_eval, sf, start_line_number);
 }
 #endif
 
@@ -32725,9 +32729,11 @@ LEPUSValue JS_EvalObject(LEPUSContext *ctx, LEPUSValueConst this_obj,
 #endif
 }
 
-LEPUSValue LEPUS_Eval(LEPUSContext *ctx, const char *input, size_t input_len,
-                      const char *filename, int eval_flags) {
-  CallGCFunc(JS_Eval_GC, ctx, input, input_len, filename, eval_flags);
+LEPUSValue LEPUS_Eval2(LEPUSContext *ctx, const char *input, size_t input_len,
+                       const char *filename, int eval_flags,
+                       int start_line_number) {
+  CallGCFunc(JS_Eval_GC, ctx, input, input_len, filename, eval_flags,
+             start_line_number);
 #ifndef NO_QUICKJS_COMPILER
   int eval_type = eval_flags & LEPUS_EVAL_TYPE_MASK;
   LEPUSValue ret;
@@ -32735,7 +32741,7 @@ LEPUSValue LEPUS_Eval(LEPUSContext *ctx, const char *input, size_t input_len,
   assert(eval_type == LEPUS_EVAL_TYPE_GLOBAL ||
          eval_type == LEPUS_EVAL_TYPE_MODULE);
   ret = JS_EvalInternal(ctx, ctx->global_obj, input, input_len, filename,
-                        eval_flags, -1);
+                        eval_flags, -1, false, NULL, start_line_number);
   return ret;
 #else
   return LEPUS_UNDEFINED;

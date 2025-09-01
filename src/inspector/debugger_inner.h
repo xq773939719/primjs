@@ -217,7 +217,7 @@ QJS_HIDE LEPUSValue js_symbol_toString_GC(LEPUSContext *, LEPUSValue, int32_t,
 QJS_HIDE void DebuggerParseScript(LEPUSContext *ctx, const char *input,
                                   size_t input_len, struct JSFunctionDef *fd,
                                   const char *filename, int32_t end_line_num,
-                                  int32_t err);
+                                  int32_t err, int start_line_number);
 QJS_HIDE void AdjustBreakpoints(LEPUSContext *ctx, LEPUSScriptSource *script);
 
 QJS_HIDE void DebuggerSetFunctionBytecodeScript(LEPUSContext *ctx,

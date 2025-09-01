@@ -699,7 +699,7 @@ int32_t GetExecutionContextId(LEPUSContext *ctx) {
 QJS_HIDE void DebuggerParseScript(LEPUSContext *ctx, const char *input,
                                   size_t input_len, JSFunctionDef *fd,
                                   const char *filename, int32_t end_line_num,
-                                  int32_t err) {
+                                  int32_t err, int start_line_number) {
   auto *debug_info = ctx->debugger_info;
   if (!debug_info) return;
   char *source_url = NULL;
@@ -730,7 +730,7 @@ QJS_HIDE void DebuggerParseScript(LEPUSContext *ctx, const char *input,
       if (script->source) {
         memcpy(script->source, input, input_len + 1);
       }
-      script->end_line = end_line_num;
+      script->end_line = end_line_num + start_line_number;
       SetScriptUrl(ctx, filename, script, source_url);
       SetScriptSourceMappingUrl(ctx, script);
       SetScriptHash(ctx, script);

@@ -770,7 +770,8 @@ struct LEPUSContext {
   LEPUSValue (*eval_internal)(LEPUSContext *ctx, LEPUSValueConst this_obj,
                               const char *input, size_t input_len,
                               const char *filename, int flags, int scope_idx,
-                              bool debugger_eval, LEPUSStackFrame *sf);
+                              bool debugger_eval, LEPUSStackFrame *sf,
+                              int start_line_number);
 
   void *user_opaque;
   // <Primjs begin>
@@ -2162,7 +2163,8 @@ LEPUSValue JS_CallConstructor2_GC(LEPUSContext *ctx, LEPUSValueConst func_obj,
                                   LEPUSValueConst new_target, int argc,
                                   LEPUSValueConst *argv);
 LEPUSValue JS_Eval_GC(LEPUSContext *ctx, const char *input, size_t input_len,
-                      const char *filename, int eval_flags);
+                      const char *filename, int eval_flags,
+                      int start_line_number);
 LEPUSValue JS_EvalBinary_GC(LEPUSContext *ctx, const uint8_t *buf,
                             size_t buf_len, int flags);
 LEPUSValue JS_GetGlobalObject_GC(LEPUSContext *ctx);
@@ -2611,7 +2613,7 @@ QJS_HIDE bool read_string(JSParseState *s, uint8_t **ptr, json_val *val);
 QJS_HIDE json_val *json_parse_value(JSParseState *s, size_t dat_len);
 QJS_HIDE void js_parse_init(LEPUSContext *ctx, JSParseState *s,
                             const char *input, size_t input_len,
-                            const char *filename);
+                            const char *filename, int start_line_num = 0);
 QJS_HIDE LEPUSValue JS_ParseJSONOPT(LEPUSContext *ctx, const char *buf,
                                     size_t buf_len, const char *filename);
 QJS_HIDE LEPUSObject *get_typed_array(LEPUSContext *ctx,
@@ -2953,7 +2955,8 @@ QJS_HIDE LEPUSValue js_array_buffer_get_byteLength(LEPUSContext *,
 // NULL
 QJS_HIDE LEPUSValue JS_EvalInternal(LEPUSContext *, LEPUSValue, const char *,
                                     size_t, const char *, int, int,
-                                    bool = false, LEPUSStackFrame * = nullptr);
+                                    bool = false, LEPUSStackFrame * = nullptr,
+                                    int start_line_num = 0);
 #endif
 
 LEPUSValue js_array_reduce_gc(LEPUSContext *ctx, LEPUSValueConst this_val,

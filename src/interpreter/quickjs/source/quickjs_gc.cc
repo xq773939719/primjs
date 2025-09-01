@@ -14813,7 +14813,8 @@ static LEPUSValue __JS_EvalInternal_GC(LEPUSContext *ctx,
                                        const char *input, size_t input_len,
                                        const char *filename, int flags,
                                        int scope_idx, bool debugger_eval,
-                                       LEPUSStackFrame *debugger_frame) {
+                                       LEPUSStackFrame *debugger_frame,
+                                       int start_line_number) {
   JSParseState s1, *s = &s1;
   int err, js_mode, eval_type;
   LEPUSValue fun_obj, ret_val;
@@ -14824,7 +14825,7 @@ static LEPUSValue __JS_EvalInternal_GC(LEPUSContext *ctx,
   LEPUSModuleDef *m;
   LEPUSScriptSource *script = nullptr;
 
-  js_parse_init(ctx, s, input, input_len, filename);
+  js_parse_init(ctx, s, input, input_len, filename, start_line_number);
   HandleScope func_scope(ctx, &s->token, HANDLE_TYPE_LEPUS_TOKEN);
   skip_shebang(s);
 
@@ -14904,7 +14905,8 @@ static LEPUSValue __JS_EvalInternal_GC(LEPUSContext *ctx,
 #ifdef ENABLE_QUICKJS_DEBUGGER
   if (!debugger_eval && (ctx->debugger_parse_script || ctx->debugger_mode) &&
       !(flags & LEPUS_DEBUGGER_NO_PERSIST_SCRIPT)) {
-    DebuggerParseScript(ctx, input, input_len, fd, filename, s->line_num, err);
+    DebuggerParseScript(ctx, input, input_len, fd, filename, s->line_num, err,
+                        start_line_number);
     script = fd->script;
   }
 #endif
@@ -14964,7 +14966,8 @@ LEPUSValue JS_EvalObject(LEPUSContext *ctx, LEPUSValueConst this_obj,
 }
 
 LEPUSValue JS_Eval_GC(LEPUSContext *ctx, const char *input, size_t input_len,
-                      const char *filename, int eval_flags) {
+                      const char *filename, int eval_flags,
+                      int start_line_number) {
 #ifndef NO_QUICKJS_COMPILER
   int eval_type = eval_flags & LEPUS_EVAL_TYPE_MASK;
   LEPUSValue ret;
@@ -14972,7 +14975,7 @@ LEPUSValue JS_Eval_GC(LEPUSContext *ctx, const char *input, size_t input_len,
   assert(eval_type == LEPUS_EVAL_TYPE_GLOBAL ||
          eval_type == LEPUS_EVAL_TYPE_MODULE);
   ret = JS_EvalInternal(ctx, ctx->global_obj, input, input_len, filename,
-                        eval_flags, -1);
+                        eval_flags, -1, false, NULL, start_line_number);
   return ret;
 #else
   return LEPUS_UNDEFINED;

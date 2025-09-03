@@ -32056,9 +32056,6 @@ void GarbageCollector::UpdateGCInfo(size_t heapsize_before, int64_t duration) {
       ctx = list_entry(el, LEPUSContext, link);
     }
     std::string gc_info_str = gc_info.str();
-    if (rt_->update_gc_info) {
-      rt_->update_gc_info(ctx, gc_info_str.c_str(), info_size);
-    }
     GCObserver *observer = static_cast<GCObserver *>(rt_->gc_observer);
     if (observer) {
       observer->OnGC(std::move(gc_info_str));

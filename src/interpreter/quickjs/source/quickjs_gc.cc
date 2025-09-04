@@ -2715,15 +2715,13 @@ QJS_HIDE LEPUSValue JS_NewObjectFromShape_GC(LEPUSContext *ctx, JSShape *sh,
   p->u.opaque = NULL;
   p->shape = sh;
   p->prop = NULL;
-#ifdef ENABLE_CHECK_TOOLS
-  if (ctx->object_ctx_check) {
+  if (unlikely(ctx->object_ctx_check)) {
     p->ctx = ctx;
     p->tid = get_tid();
   } else {
     p->ctx = nullptr;
     p->tid = 0;
   }
-#endif
 
   switch (class_id) {
     case JS_CLASS_OBJECT:
@@ -4818,9 +4816,7 @@ int JS_SetPropertyInternalImpl_GC(LEPUSContext *ctx, LEPUSValueConst this_obj,
   }
   p = LEPUS_VALUE_GET_OBJ(this_obj);
 
-#ifdef ENABLE_CHECK_TOOLS
   CheckObjectCtx(ctx, val);
-#endif
 
 retry:
   prs = find_own_property(&pr, p, prop);

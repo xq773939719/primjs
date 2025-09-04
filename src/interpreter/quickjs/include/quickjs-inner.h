@@ -57,6 +57,8 @@ extern "C" {
 #include <sys/mman.h>
 
 #include <unordered_set>
+#else
+#define pid_t int
 #endif
 #include <cstring>
 
@@ -425,6 +427,7 @@ struct LEPUSRuntime {
   JSMallocState malloc_state;
   void *gc_observer;
   int gc_depth;
+  bool object_ctx_check;
 #ifdef ENABLE_TRACING_GC
   LEPUSObject *boilerplateArg0;
   LEPUSObject *boilerplateArg1;
@@ -980,10 +983,8 @@ typedef struct LEPUSFunctionBytecode {
   // <Primjs begin>
   struct list_head gc_link;
   uint32_t function_id;  // for lepusNG debugger encode
-#ifdef ENABLE_CHECK_TOOLS
   LEPUSContext *ctx;
   pid_t tid;
-#endif
   // <Primjs end>
   struct {
     /* debug info, move to separate structure to save memory? */
@@ -1357,10 +1358,8 @@ struct LEPUSObject {
     JSRegExp regexp;        /* JS_CLASS_REGEXP: 8/16 bytes */
     LEPUSValue object_data; /* for JS_SetObjectData(): 8/16/16 bytes */
   } u;
-#ifdef ENABLE_CHECK_TOOLS
   LEPUSContext *ctx;
   pid_t tid;
-#endif
   /* byte sizes: 40/48/72 */
 };
 
@@ -3225,9 +3224,7 @@ void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable);
 
 void trig_gc(JSMallocState *s, size_t size, bool is_outer = false);
 
-#ifdef ENABLE_CHECK_TOOLS
 QJS_HIDE pid_t get_tid();
-#endif
 
 enum {
   ArrayFind,

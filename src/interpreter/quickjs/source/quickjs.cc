@@ -4596,15 +4596,13 @@ QJS_HIDE LEPUSValue JS_NewObjectFromShape(LEPUSContext *ctx, JSShape *sh,
   p->first_weak_ref = NULL;
   p->u.opaque = NULL;
   p->shape = sh;
-#ifdef ENABLE_CHECK_TOOLS
-  if (ctx->object_ctx_check) {
+  if (unlikely(ctx->object_ctx_check)) {
     p->ctx = ctx;
     p->tid = get_tid();
   } else {
     p->ctx = nullptr;
     p->tid = 0;
   }
-#endif
   p->prop = static_cast<JSProperty *>(
       lepus_malloc(ctx, sizeof(JSProperty) * sh->prop_size));
   if (unlikely(!p->prop)) {
@@ -5438,9 +5436,7 @@ void LEPUS_FreeValue(LEPUSContext *ctx, LEPUSValue v) {
   DCHECK(!ctx->gc_enable);
   if (LEPUS_VALUE_HAS_REF_COUNT(v)) {
     LEPUSRefCountHeader *p = (LEPUSRefCountHeader *)LEPUS_VALUE_GET_PTR(v);
-#ifdef ENABLE_CHECK_TOOLS
     CheckObjectCtx(ctx, v);
-#endif
     if (--p->ref_count <= 0) {
       __JS_FreeValue(ctx, v);
     }
@@ -5450,9 +5446,7 @@ void LEPUS_FreeValue(LEPUSContext *ctx, LEPUSValue v) {
 void LEPUS_FreeValueRT(LEPUSRuntime *rt, LEPUSValue v) {
   if (LEPUS_VALUE_HAS_REF_COUNT(v)) {
     LEPUSRefCountHeader *p = (LEPUSRefCountHeader *)LEPUS_VALUE_GET_PTR(v);
-#ifdef ENABLE_CHECK_TOOLS
     CheckObjectRt(rt, v);
-#endif
     if (--p->ref_count <= 0) {
       __JS_FreeValueRT(rt, v);
     }
@@ -8872,9 +8866,7 @@ int JS_SetPropertyInternalImpl(LEPUSContext *ctx, LEPUSValueConst this_obj,
   }
   p = LEPUS_VALUE_GET_OBJ(this_obj);
 
-#ifdef ENABLE_CHECK_TOOLS
   CheckObjectCtx(ctx, val);
-#endif
 
 retry:
   prs = find_own_property(&pr, p, prop);
@@ -18528,10 +18520,7 @@ QJS_STATIC inline LEPUSValue JS_CallInternalTI(LEPUSContext *caller_ctx,
                                                LEPUSValue this_obj,
                                                LEPUSValue new_target, int argc,
                                                LEPUSValue *argv, int flags) {
-#ifdef ENABLE_CHECK_TOOLS
   CheckObjectCtx(caller_ctx, func_obj);
-#endif
-
 #ifdef ENABLE_PRIMJS_SNAPSHOT
   if (caller_ctx->rt->use_primjs) {
     return entry(this_obj, new_target, func_obj, (address)caller_ctx, argc,
@@ -31570,15 +31559,13 @@ LEPUSValue js_create_function(LEPUSContext *ctx, JSFunctionDef *fd) {
   }
 
   b->stack_size = stack_size;
-#ifdef ENABLE_CHECK_TOOLS
-  if (ctx->object_ctx_check) {
+  if (unlikely(ctx->object_ctx_check)) {
     b->ctx = ctx;
     b->tid = get_tid();
   } else {
     b->ctx = nullptr;
     b->tid = 0;
   }
-#endif
 
   if (fd->js_mode & JS_MODE_STRIP) {
     if (!is_gc) {
@@ -56168,6 +56155,7 @@ void InitLynxTraceEnv(void *(*begin)(const char *), void (*end)(void *ptr)) {
 
 void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable) {
   ctx->object_ctx_check = enable;
+  ctx->rt->object_ctx_check = enable;
   if (enable) {
     ctx->check_tools = new CheckTools();
   }
@@ -56175,15 +56163,11 @@ void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable) {
 }
 
 bool LEPUS_PushObjectCheckTid(LEPUSContext *ctx) {
-#ifdef ENABLE_CHECK_TOOLS
   if (!ctx->object_ctx_check || ctx->check_tools == nullptr) {
     return false;
   }
   pid_t cur_tid = get_tid();
   return ctx->check_tools->PushTid(static_cast<int>(cur_tid));
-#else
-  return false;
-#endif
 }
 
 int64_t UpdateOuterObjSize(LEPUSRuntime *rt, int size) {
@@ -56214,21 +56198,20 @@ void *LEPUS_GetGCObserver(LEPUSRuntime *rt) {
 #endif
 }
 
-#ifdef ENABLE_CHECK_TOOLS
 pid_t get_tid() {
+  pid_t tid = 0;
 #if defined(ANDROID) || defined(__ANDROID__) || defined(OS_HARMONY)
-  return syscall(SYS_gettid);
+  tid = syscall(SYS_gettid);
 #elif defined(OS_IOS)
   uint64_t tid64;
   pthread_threadid_np(NULL, &tid64);
-  return (pid_t)tid64;
-#else
-  return 0;
+  tid = (pid_t)tid64;
 #endif
+  return tid;
 }
 
 void CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj) {
-  if (ctx->object_ctx_check) {
+  if (unlikely(ctx->object_ctx_check)) {
     bool inconsistent_ctx =
         (LEPUS_VALUE_IS_OBJECT(obj) && LEPUS_VALUE_GET_OBJ(obj)->ctx &&
          (LEPUS_VALUE_GET_OBJ(obj)->ctx) != ctx) ||
@@ -56273,13 +56256,14 @@ void CheckObjectCtx(LEPUSContext *ctx, LEPUSValue obj) {
   }
 }
 void CheckObjectRt(LEPUSRuntime *rt, LEPUSValue obj) {
-  LEPUSContext *ctx = nullptr;
-  struct list_head *el, *el1;
-  list_for_each_safe(el, el1, &rt->context_list) {
-    ctx = list_entry(el, LEPUSContext, link);
-  }
-  if (ctx) {
-    CheckObjectCtx(ctx, obj);
+  if (unlikely(rt->object_ctx_check)) {
+    LEPUSContext *ctx = nullptr;
+    if (!list_empty(&rt->context_list)) {
+      struct list_head *el = rt->context_list.prev;
+      ctx = list_entry(el, LEPUSContext, link);
+    }
+    if (ctx) {
+      CheckObjectCtx(ctx, obj);
+    }
   }
 }
-#endif

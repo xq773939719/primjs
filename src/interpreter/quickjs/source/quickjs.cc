@@ -7161,7 +7161,7 @@ LEPUSValue JS_ThrowTypeErrorNotFunction(LEPUSContext *ctx) {
       !js_is_bytecode_function(sf->cur_func)) {
     return LEPUS_ThrowTypeError(ctx, "not a function");
   }
-  dbuf_init(&name);
+  js_dbuf_init(ctx, &name);
   HandleScope func_scope{ctx, &name.buf, HANDLE_TYPE_HEAP_OBJ};
 
   b = LEPUS_VALUE_GET_OBJ(sf->cur_func)->u.func.function_bytecode;

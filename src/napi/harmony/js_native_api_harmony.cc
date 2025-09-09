@@ -68,7 +68,10 @@ void ExternalNativeInfo::CallFinalizer() {
     HandleScopeWrapper func_scope{env_->ctx->vm_env_};
     cb(env_, data_, hint_);
   }
-  env_->ctx->DeleteFinalizer(pos_);
+  if (!is_finalized_) {
+    env_->ctx->DeleteFinalizer(pos_);
+    is_finalized_ = true;
+  }
   finalize_cb_ = nullptr;
   return;
 }

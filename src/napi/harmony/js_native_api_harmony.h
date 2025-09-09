@@ -94,6 +94,7 @@ struct ExternalNativeInfo {
   void* data_;
   void* hint_;
   std::list<ExternalNativeInfo*>::const_iterator pos_;
+  bool is_finalized_{false};
 };
 
 struct Reference {
@@ -307,12 +308,15 @@ struct napi_context__harmony {
       (*it)->ClearReference();
       it = next;
     }
+    auto finalizer_vec = std::vector<harmonyimpl::ExternalNativeInfo*>(
+        std::begin(finalizer_list_), std::end(finalizer_list_));
+
+    for (auto it = finalizer_vec.rbegin(); it != finalizer_vec.rend(); ++it) {
+      (*it)->CallFinalizer();
+    }
+
     for (auto& data : instance_data_) {
       harmonyimpl::ExternalNativeInfo::Delete(vm_env_, data.second, nullptr);
-    }
-    for (auto finalizer : std::vector<harmonyimpl::ExternalNativeInfo*>(
-             std::begin(finalizer_list_), std::end(finalizer_list_))) {
-      finalizer->CallFinalizer();
     }
     return;
   }

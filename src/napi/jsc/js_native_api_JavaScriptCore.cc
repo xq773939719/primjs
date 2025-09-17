@@ -558,7 +558,14 @@ class Function {
     NativeInfo* info{static_cast<NativeInfo*>(JSObjectGetPrivate(function))};
     assert(info->Type() == NativeType::Function);
     Function* func_data = static_cast<Function*>(info->Data());
-    assert(func_data);
+    if (!func_data) {
+      JSStringRef str = JSStringCreateWithUTF8CString("env is released");
+      JSValueRef msg = JSValueMakeString(ctx, str);
+      JSStringRelease(str);
+      *exception = JSObjectMakeError(ctx, 1, &msg, nullptr);
+      return nullptr;
+    }
+    // assert(func_data);
 
     napi_env env = info->Env();
     // Make sure any errors encountered last time we were in N-API are gone.
@@ -840,7 +847,14 @@ class Constructor {
     NativeInfo* info{static_cast<NativeInfo*>(JSObjectGetPrivate(constructor))};
     assert(info->Type() == NativeType::Constructor);
     Constructor* cons_data = static_cast<Constructor*>(info->Data());
-    assert(cons_data);
+    if (!cons_data) {
+      JSStringRef str = JSStringCreateWithUTF8CString("env is released");
+      JSValueRef msg = JSValueMakeString(ctx, str);
+      JSStringRelease(str);
+      *exception = JSObjectMakeError(ctx, 1, &msg, nullptr);
+      return nullptr;
+    }
+    // assert(cons_data);
 
     // Make sure any errors encountered last time we were in N-API are
     // gone.

@@ -1312,6 +1312,24 @@ napi_status napi_define_properties(napi_env env, napi_value object,
 
   for (size_t i = 0; i < property_count; i++) {
     const napi_property_descriptor* p{properties + i};
+    char* prop_name = const_cast<char*>(p->utf8name);
+    if (!prop_name) {
+      JSValueRef prop_value = napi_js_value_to_jsc_value(env, p->name);
+      JSContextRef ctx = env->ctx->context;
+      JSValueRef exception = nullptr;
+
+      JSStringRef prop_string =
+          JSValueToStringCopy(ctx, prop_value, &exception);
+      if (exception) {
+        prop_string = JSStringCreateWithUTF8CString("Symbol()");
+        exception = nullptr;
+      }
+
+      size_t max_size = JSStringGetMaximumUTF8CStringSize(prop_string);
+      prop_name = new char[max_size];
+      JSStringGetUTF8CString(prop_string, prop_name, max_size);
+      JSStringRelease(prop_string);
+    }
 
     if (p->getter != nullptr || p->setter != nullptr || p->name) {
       // JSC has no getter/setter API nor symbol operation, so a lot of hacks
@@ -1365,7 +1383,7 @@ napi_status napi_define_properties(napi_env env, napi_value object,
         }
       } else if (p->method != nullptr) {
         napi_value method{};
-        CHECK_NAPI(napi_create_function(env, p->utf8name, NAPI_AUTO_LENGTH,
+        CHECK_NAPI(napi_create_function(env, prop_name, NAPI_AUTO_LENGTH,
                                         p->method, p->data, &method));
         CHECK_NAPI(napi_set_named_property(env, descriptor, "value", method));
       } else {
@@ -1392,7 +1410,7 @@ napi_status napi_define_properties(napi_env env, napi_value object,
     } else {
       napi_value value;
       if (p->method != nullptr) {
-        CHECK_NAPI(napi_create_function(env, p->utf8name, NAPI_AUTO_LENGTH,
+        CHECK_NAPI(napi_create_function(env, prop_name, NAPI_AUTO_LENGTH,
                                         p->method, p->data, &value));
       } else {
         RETURN_STATUS_IF_FALSE(env, p->value != nullptr, napi_invalid_arg);
@@ -1401,9 +1419,12 @@ napi_status napi_define_properties(napi_env env, napi_value object,
 
       JSValueRef exc = nullptr;
       JSObjectSetProperty(env->ctx->context, ToJSObject(object),
-                          JSString(p->utf8name), ToJSValue(value),
+                          JSString(prop_name), ToJSValue(value),
                           ToJSCPropertyAttributes(p->attributes), &exc);
       CHECK_JSC(env, exc);
+    }
+    if (p->utf8name == nullptr) {
+      delete[] prop_name;
     }
   }
 

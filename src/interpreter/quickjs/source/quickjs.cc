@@ -3212,6 +3212,7 @@ QJS_STATIC JSAtom js_atom_concat_str(LEPUSContext *ctx, JSAtom name,
   HandleScope func_scope(ctx, &str, HANDLE_TYPE_LEPUS_VALUE);
   cstr = LEPUS_ToCStringLen2(ctx, &len, str, 0);
   if (!cstr) goto fail;
+  func_scope.PushHandle(&cstr, HANDLE_TYPE_CSTRING);
   len1 = strlen(str1);
   cstr2 = static_cast<char *>(
       lepus_malloc(ctx, len + len1 + 1, ALLOC_TAG_WITHOUT_PTR));

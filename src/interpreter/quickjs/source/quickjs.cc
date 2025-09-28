@@ -56164,6 +56164,7 @@ void SetObjectCtxCheckStatus(LEPUSContext *ctx, bool enable) {
   ctx->rt->object_ctx_check = enable;
   if (enable) {
     ctx->check_tools = new CheckTools();
+    ctx->check_tools->PushTid(static_cast<int>(get_tid()));
   }
   return;
 }

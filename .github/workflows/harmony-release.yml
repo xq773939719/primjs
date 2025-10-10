@@ -4,10 +4,41 @@ on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'release tag'
+        required: false
+        type: string
   
 jobs:
+  get-version:
+    runs-on: lynx-ubuntu-22.04-medium
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
+    steps:
+      - name: Get Version
+        id: get_version
+        run: |-
+          if [ ${{ github.event_name }} == 'workflow_dispatch' ]; then
+            version=${{ github.event.inputs.tag }}
+          else
+            version=$(echo ${{ github.ref }} | awk -F "/" '{print $3}')
+          fi
+          if [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || \
+                $version =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ || \
+                $version =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]; then
+            echo "Version is valid"
+            echo "VERSION=$version" >> $GITHUB_OUTPUT;
+          else
+            echo "Version is invalid"
+            exit 1
+          fi
+
   harmony-release:
     runs-on: lynx-container
+    needs: get-version
     container: 
       image: ghcr.io/lynx-family/ubuntu24.04-harmony@sha256:8eb0ee8da7e8592669f0fcd41d0e1bc818b33a75e27943521f57af87d04db2fb
       credentials:
@@ -32,11 +63,8 @@ jobs:
       - name: Get latest tag
         id: get-latest-tag
         uses: ./.github/actions/get-latest-tag
-      - name: Get Tag Information
-        run: |-
-          version=$(echo ${{ github.ref }} | awk -F "/" '{print $3}')
-          echo "VERSION=$version" >> $GITHUB_OUTPUT;
-        id: get_tag
+        with:
+          current-tag: ${{ needs.get-version.outputs.version }}
       - name: Install deps
         shell: bash
         run: |
@@ -47,7 +75,7 @@ jobs:
         run: |
           COMMIT_ID=$(git rev-list -n 1 ${{ steps.get-latest-tag.outputs.latest-tag }})
           git-cliff --config harmony/primjs/cliff.toml \
-          $COMMIT_ID..HEAD | sed 's/<!-- version -->/${{ steps.get_tag.outputs.VERSION }}/g' > harmony/primjs/CHANGELOG.md
+          $COMMIT_ID..HEAD | sed 's/<!-- version -->/${{ needs.get-version.outputs.version }}/g' > harmony/primjs/CHANGELOG.md
           echo "CHANGELOG.md generated successfully"
           cat harmony/primjs/CHANGELOG.md
       - name: Build & Publish
@@ -60,16 +88,28 @@ jobs:
           PROJECT_ROOT=$(pwd)
           ohpm config set publish_registry https://ohpm.openharmony.cn/ohpm
           pushd harmony
-          ./scripts/build.py --modules primjs --build_type Release --build_napi_adapter --version ${{ steps.get_tag.outputs.VERSION }}
+          ./scripts/build.py --modules primjs --build_type Release --build_napi_adapter --version ${{ needs.get-version.outputs.version }}
           pushd primjs/build/default/outputs/default
           ohpm publish primjs.har --publish_id ${{ secrets.HARMONY_PUBLISH_ID }} --key_path $PROJECT_ROOT/publish_key
           popd
           popd
+      - name: Get release info
+        if: ${{ github.event_name == 'push' }}
+        id: get_release
+        uses: octokit/request-action@v2.x
+        with:
+          route: GET /repos/${{ github.repository }}/releases/tags/${{ needs.get-version.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Push to release
+        if: ${{ github.event_name == 'push' }}
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ steps.get_tag.outputs.VERSION }}
+          tag: ${{ needs.get-version.outputs.version }}
           token: ${{ secrets.GITHUB_TOKEN }}
           replacesArtifacts: true
           allowUpdates: true
           artifacts: "harmony/primjs/build/default/outputs/default/primjs.har"
+          body: ${{ fromJSON(steps.get_release.outputs.data).body }}
+          draft: ${{ fromJSON(steps.get_release.outputs.data).draft }}
+          prerelease: ${{ fromJSON(steps.get_release.outputs.data).prerelease }}

@@ -4,14 +4,44 @@ on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'release tag'
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  get-version:
+    runs-on: lynx-ubuntu-22.04-medium
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
+    steps:
+      - name: Get Version
+        id: get_version
+        run: |-
+          if [ ${{ github.event_name }} == 'workflow_dispatch' ]; then
+            version=${{ github.event.inputs.tag }}
+          else
+            version=$(echo ${{ github.ref }} | awk -F "/" '{print $3}')
+          fi
+          if [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || \
+                $version =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ || \
+                $version =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]; then
+            echo "Version is valid"
+            echo "VERSION=$version" >> $GITHUB_OUTPUT;
+          else
+            echo "Version is invalid"
+            exit 1
+          fi
+
   android-release:
     runs-on: lynx-ubuntu-22.04-medium
-
+    needs: get-version
     steps:
     - name: Download Source
       uses: actions/checkout@v4.2.2
@@ -20,12 +50,6 @@ jobs:
       uses: actions/setup-java@v1
       with:
         java-version: 11
-
-    - name: Get Tag Information
-      run: |-
-        version=$(echo ${{ github.ref }} | awk -F "/" '{print $3}')
-        echo "VERSION=$version" >> $GITHUB_OUTPUT;
-      id: get_tag
 
     - name: Cache Gradle packages
       uses: actions/cache@v4
@@ -43,11 +67,11 @@ jobs:
         chmod +x ./gradlew
         ./gradlew :app:assemblerelease
         ./gradlew :app:publish \
-        -Pversion=${{ steps.get_tag.outputs.VERSION }} \
+        -Pversion=${{ needs.get-version.outputs.version }} \
         -Psigning.keyId=${{ secrets.SIGNING_KEY_ID }} \
         -Psigning.password=${{ secrets.SIGNING_PASSWORD }} \
         -Psigning.secretKey=${{ secrets.SIGNING_SECRET_KEY }}
-        ./gradlew :app:zipArtifacts -Pversion=${{ steps.get_tag.outputs.VERSION }} :app:getArtifactList
+        ./gradlew :app:zipArtifacts -Pversion=${{ needs.get-version.outputs.version }} :app:getArtifactList
         popd
         pushd Android/app/build/
         artifact_list=$(<artifact-list)
@@ -55,14 +79,27 @@ jobs:
         popd
       id: build_artifact
 
+    - name: Get release info
+      if: ${{ github.event_name == 'push' }}
+      id: get_release
+      uses: octokit/request-action@v2.x
+      with:
+        route: GET /repos/${{ github.repository }}/releases/tags/${{ needs.get-version.outputs.version }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Push to release
+      if: ${{ github.event_name == 'push' }}
       uses: ncipollo/release-action@v1
       with:
-        tag: ${{ steps.get_tag.outputs.VERSION }}
+        tag: ${{ needs.get-version.outputs.version }}
         token: ${{ secrets.GITHUB_TOKEN }}
         replacesArtifacts: true
         allowUpdates: true
         artifacts: "Android/app/build/outputs/aar/primjs-release.aar"
+        body: ${{ fromJSON(steps.get_release.outputs.data).body }}
+        draft: ${{ fromJSON(steps.get_release.outputs.data).draft }}
+        prerelease: ${{ fromJSON(steps.get_release.outputs.data).prerelease }}
 
     - name: Publish artifact to maven
       uses: lynx-infra/maven-publish-action@2a55bab5273ffd84ebbb600e783286fc6251c239

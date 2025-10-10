@@ -1145,8 +1145,8 @@ LEPUSValue LEPUS_CallConstructor(LEPUSContext *ctx, LEPUSValueConst func_obj,
 LEPUSValue LEPUS_CallConstructor2(LEPUSContext *ctx, LEPUSValueConst func_obj,
                                   LEPUSValueConst new_target, int argc,
                                   LEPUSValueConst *argv);
-#define LEPUS_Eval(ctx, input, input_len, filename, eval_flags) \
-  LEPUS_Eval2(ctx, input, input_len, filename, eval_flags, 0)
+LEPUSValue LEPUS_Eval(LEPUSContext *ctx, const char *input, size_t input_len,
+                      const char *filename, int eval_flags);
 LEPUSValue LEPUS_Eval2(LEPUSContext *ctx, const char *input, size_t input_len,
                        const char *filename, int eval_flags,
                        int start_line_number);

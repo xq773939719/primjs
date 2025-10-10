@@ -32730,6 +32730,11 @@ LEPUSValue JS_EvalObject(LEPUSContext *ctx, LEPUSValueConst this_obj,
 #endif
 }
 
+LEPUSValue LEPUS_Eval(LEPUSContext *ctx, const char *input, size_t input_len,
+                      const char *filename, int eval_flags) {
+  return LEPUS_Eval2(ctx, input, input_len, filename, eval_flags, 0);
+}
+
 LEPUSValue LEPUS_Eval2(LEPUSContext *ctx, const char *input, size_t input_len,
                        const char *filename, int eval_flags,
                        int start_line_number) {

@@ -30,7 +30,7 @@ option(FORCE_GC "Enable force gc" OFF)
 option(ENABLE_ASAN "Enable address sanitizer" OFF)
 option(ENABLE_UNITTESTS "Enable build unittests" OFF)
 option(ENABLE_BUILD_AAR "Enable build aar" OFF)
-option(ENABLE_VIRTUAL_SP "Enable use virtual sp" OFF)
+option(ENABLE_VIRTUAL_STACK "Enable use virtual sp" OFF)
 
 set(CMAKE_COMMON_FLAGS
     "${CMAKE_COMMON_FLAGS} -Os -fPIC -ffunction-sections -fdata-sections \
@@ -134,10 +134,10 @@ if(ENABLE_UNITTESTS)
   add_definitions(-DHEAPPROFILER_UNITTEST)
 endif()
 
-if(ENABLE_VIRTUAL_SP)
-  add_definitions(-DUSE_VIRTUAL_STACK=1)
+if(ENABLE_VIRTUAL_STACK)
+  add_definitions(-DENABLE_VIRTUAL_STACK=1)
 else()
-  add_definitions(-DUSE_VIRTUAL_STACK=0)
+  add_definitions(-DENABLE_VIRTUAL_STACK=0)
 endif()
 
 if(WIN32)

@@ -965,16 +965,8 @@ LEPUSRuntime *LEPUS_NewRuntime2(const LEPUSMallocFunctions *mf, void *opaque,
   memset(&ms, 0, sizeof(ms));
   ms.opaque = opaque;
   ms.malloc_limit = -1;
-#ifdef ENABLE_PRIMJS_SNAPSHOT
-  bool primjs_is_active = primjs_snapshot_enabled();
-#endif
 
-#ifdef ENABLE_PRIMJS_SNAPSHOT
-  const char *module_name = primjs_is_active ? MODULE_PRIMJS : MODULE_QUICK;
-  MonitorEvent(MODULE_QUICK, DEFAULT_BIZ_NAME, "NewRuntime", module_name);
-#else
   MonitorEvent(MODULE_QUICK, DEFAULT_BIZ_NAME, "NewRuntime", MODULE_QUICK);
-#endif
 
   rt = static_cast<LEPUSRuntime *>(
       mf->lepus_malloc(&ms, sizeof(LEPUSRuntime), 0));
@@ -985,7 +977,7 @@ LEPUSRuntime *LEPUS_NewRuntime2(const LEPUSMallocFunctions *mf, void *opaque,
   rt->qjsvaluevalue_allocator = new QJSValueValueSpace(rt);
 
 #ifdef ENABLE_PRIMJS_SNAPSHOT
-  rt->use_primjs = primjs_is_active;
+  rt->use_primjs = false;
 #endif
   rt->mf = *mf;
 #if defined(__aarch64__) && (defined(ANDROID) || defined(__ANDROID__)) && \
@@ -1063,15 +1055,12 @@ void JS_ResetRuntimeForEffect(LEPUSRuntime *rt, const LEPUSMallocFunctions *mf,
   memset(&ms, 0, sizeof(ms));
   ms.opaque = opaque;
   ms.malloc_limit = -1;
-#ifdef ENABLE_PRIMJS_SNAPSHOT
-  bool primjs_is_active = false;
-#endif
 
   if (!rt) return;
   rt->gc_enable = false;
 
 #ifdef ENABLE_PRIMJS_SNAPSHOT
-  rt->use_primjs = primjs_is_active;
+  rt->use_primjs = false;
 #endif
   rt->mf = *mf;
 #if defined(__aarch64__) && (defined(ANDROID) || defined(__ANDROID__)) && \
@@ -1418,12 +1407,7 @@ void LEPUS_SetRuntimeInfo(LEPUSRuntime *rt, const char *s) {
         JS_ResetRuntimeForEffect(rt, &def_malloc_funcs, NULL);
       }
     }
-#ifdef ENABLE_PRIMJS_SNAPSHOT
-    const char *module_name = rt->use_primjs ? MODULE_PRIMJS : MODULE_QUICK;
-    MonitorEvent(MODULE_QUICK, s, "SetRuntimeInfo", module_name);
-#else
     MonitorEvent(MODULE_QUICK, s, "SetRuntimeInfo", MODULE_QUICK);
-#endif
   }
 }
 
@@ -1817,26 +1801,22 @@ void LEPUS_SetVirtualStackSize(LEPUSContext *ctx, uint32_t stack_size) {
   return;
 }
 
-#ifdef USE_VIRTUAL_STACK
-void InitVirtualStack(LEPUSContext *ctx) {
-  size_t allocate_stack_size = minify_virtual_stack_size_enabled()
-                                   ? MINIFY_VIRTUAL_STACK_SIZE
-                                   : DEFAULT_VIRTUAL_STACK_SIZE;
-  ctx->stack_limit = static_cast<uint8_t *>(system_malloc(allocate_stack_size));
-  if (ctx->stack_limit == NULL) {
-    ctx->stack_limit =
-        static_cast<uint8_t *>(system_malloc(FALLBACK_VIRTUAL_STACK_SIZE));
-    if (ctx->stack_limit) {
-      ctx->rt->stack_size = FALLBACK_VIRTUAL_STACK_SIZE;
-    } else {
-      ctx->rt->stack_size = 0;
-    }
-  } else {
-    ctx->rt->stack_size = allocate_stack_size;
-  }
-  ctx->stack = ctx->stack_limit + ctx->rt->stack_size;
-  return;
+#ifdef ENABLE_VIRTUAL_STACK
+
+LEPUSValue *js_get_virtual_sp(size_t alloc_size) {
+  return (LEPUSValue *)VirtualStack::GetThreadLocalInstance().PushVirtualSp(
+      alloc_size);
 }
+
+void js_pop_virtual_sp(size_t size) {
+  return VirtualStack::GetThreadLocalInstance().PopVirtualSp(size);
+}
+
+LEPUSValue *js_get_stack_gc(LEPUSContext *ctx, size_t alloca_size) {
+  if (js_check_stack_overflow(ctx, alloca_size)) return nullptr;
+  return js_get_virtual_sp(alloca_size);
+}
+
 #endif
 // <Primjs end>
 
@@ -1866,10 +1846,7 @@ LEPUSContext *LEPUS_NewContextRaw(LEPUSRuntime *rt) {
   ctx->no_lepus_strict_mode = false;
   init_list_head(&ctx->loaded_modules);
   JS_AddIntrinsicBasicObjects(ctx);
-// <Primjs begin>
-#ifdef USE_VIRTUAL_STACK
-  InitVirtualStack(ctx);
-#endif
+  // <Primjs begin>
   ctx->next_function_id = 1;   // for lepusNG sourcemap, need to start from 1
   ctx->debuginfo_outside = 2;  // 2: uninitialize, 1: true, 0: false
   ctx->lynx_target_sdk_version = nullptr;
@@ -2012,11 +1989,6 @@ void LEPUS_FreeContext(LEPUSContext *ctx) {
   LEPUS_FreeValue(ctx, ctx->regexp_ctor);
   LEPUS_FreeValue(ctx, ctx->function_ctor);
   LEPUS_FreeValue(ctx, ctx->function_proto);
-// <Primjs begin>
-#ifdef USE_VIRTUAL_STACK
-  system_free(ctx->stack_limit);
-#endif
-  // <Primjs end>
 
   js_free_shape_null(ctx->rt, ctx->array_shape);
 
@@ -4854,20 +4826,19 @@ QJS_STATIC LEPUSValue js_c_function_data_call(LEPUSContext *ctx,
   int i;
 
   // <Primjs begin>
-#ifdef USE_VIRTUAL_STACK
+#ifdef ENABLE_VIRTUAL_STACK
   size_t arg_size = 0;
   LEPUSValue ret;
 #endif
   /* XXX: could add the function on the stack for debug */
   if (unlikely(argc < s->length)) {
-#ifdef USE_VIRTUAL_STACK
+#ifdef ENABLE_VIRTUAL_STACK
     arg_size = sizeof(arg_buf[0]) * s->length;
 
-    if (js_check_virtual_sp_overflow(ctx, arg_size)) {
+    arg_buf = js_get_virtual_sp(arg_size);
+    if (!arg_buf) {
       return JS_ThrowStackOverflow(ctx);
     }
-
-    arg_buf = js_get_virtual_sp(ctx, arg_size);
 #elif !defined(OS_WIN)
     arg_buf = static_cast<LEPUSValue *>(alloca(sizeof(arg_buf[0]) * s->length));
 #else
@@ -4879,9 +4850,9 @@ QJS_STATIC LEPUSValue js_c_function_data_call(LEPUSContext *ctx,
   } else {
     arg_buf = argv;
   }
-#ifdef USE_VIRTUAL_STACK
+#ifdef ENABLE_VIRTUAL_STACK
   ret = s->func(ctx, this_val, argc, arg_buf, s->magic, s->data);
-  js_pop_virtual_sp(ctx, arg_size);
+  js_pop_virtual_sp(arg_size);
   return ret;
 #else
   return s->func(ctx, this_val, argc, arg_buf, s->magic, s->data);
@@ -13627,18 +13598,17 @@ QJS_STATIC LEPUSValue js_call_c_function(LEPUSContext *ctx,
   arg_buf = argv;
 
   // <Primjs begin>
-#ifdef USE_VIRTUAL_STACK
+#ifdef ENABLE_VIRTUAL_STACK
   size_t alloca_size = 0;
 #endif
   if (unlikely(argc < arg_count)) {
     /* ensure that at least argc_count arguments are readable */
-#ifdef USE_VIRTUAL_STACK
-    alloca_size = sizeof(arg_buf[0]) * arg_count;
-
-    if (js_check_virtual_sp_overflow(ctx, alloca_size)) {
+#ifdef ENABLE_VIRTUAL_STACK
+    size_t alloca_size = sizeof(arg_buf[0]) * arg_count;
+    arg_buf = js_get_virtual_sp(alloca_size);
+    if (!arg_buf) {
       return JS_ThrowStackOverflow(ctx);
     }
-    arg_buf = js_get_virtual_sp(ctx, alloca_size);
 #elif !defined(OS_WIN)
     arg_buf = static_cast<LEPUSValue *>(alloca(sizeof(arg_buf[0]) * arg_count));
 #else
@@ -13734,8 +13704,8 @@ QJS_STATIC LEPUSValue js_call_c_function(LEPUSContext *ctx,
 
   rt->current_stack_frame = sf->prev_frame;
   // <Primjs add>
-#ifdef USE_VIRTUAL_STACK
-  js_pop_virtual_sp(ctx, alloca_size);
+#ifdef ENABLE_VIRTUAL_STACK
+  js_pop_virtual_sp(alloca_size);
 #endif
   return ret_val;
 }
@@ -13756,15 +13726,12 @@ QJS_STATIC LEPUSValue js_call_bound_function(LEPUSContext *ctx,
     return JS_ThrowStackOverflow(ctx);
   // <Primjs begin>
   LEPUSValue ret;
-#ifdef USE_VIRTUAL_STACK
+#ifdef ENABLE_VIRTUAL_STACK
   size_t alloca_size = sizeof(LEPUSValue) * arg_count;
-
-  if (js_check_virtual_sp_overflow(ctx, alloca_size)) {
+  arg_buf = js_get_virtual_sp(alloca_size);
+  if (!arg_buf) {
     return JS_ThrowStackOverflow(ctx);
   }
-  // arg_buf = alloca(sizeof(LEPUSValue) * arg_count);
-  // allocat stack size
-  arg_buf = js_get_virtual_sp(ctx, alloca_size);
 #elif !defined(OS_WIN)
   arg_buf = static_cast<LEPUSValue *>(alloca(sizeof(LEPUSValue) * arg_count));
 #else
@@ -13787,8 +13754,8 @@ QJS_STATIC LEPUSValue js_call_bound_function(LEPUSContext *ctx,
   } else {
     ret = JS_Call_RC(ctx, bf->func_obj, bf->this_val, arg_count, arg_buf);
   }
-#ifdef USE_VIRTUAL_STACK
-  js_pop_virtual_sp(ctx, alloca_size);
+#ifdef ENABLE_VIRTUAL_STACK
+  js_pop_virtual_sp(alloca_size);
 #endif
   return ret;
   // <Primjs end>
@@ -13929,7 +13896,7 @@ QJS_STATIC LEPUSValue JS_CallInternal(LEPUSContext *caller_ctx,
 #define BREAK SWITCH(pc)
 #endif
   // <Primjs begin>
-#ifdef USE_VIRTUAL_STACK
+#ifdef ENABLE_VIRTUAL_STACK
   BOOL need_free_local_buf = 0;
   // <Primjs end>
 #endif
@@ -13993,14 +13960,12 @@ QJS_STATIC LEPUSValue JS_CallInternal(LEPUSContext *caller_ctx,
   var_refs = p->u.func.var_refs;
 
   // <Primjs begin>
-#ifdef USE_VIRTUAL_STACK
+#ifdef ENABLE_VIRTUAL_STACK
   need_free_local_buf = 1;
-
-  if (js_check_virtual_sp_overflow(caller_ctx, alloca_size)) {
+  local_buf = (LEPUSValue *)js_get_virtual_sp(alloca_size);
+  if (!local_buf) {
     return JS_ThrowStackOverflow(caller_ctx);
   }
-
-  local_buf = js_get_virtual_sp(caller_ctx, alloca_size);
 #elif !defined(OS_WIN)
   local_buf = static_cast<LEPUSValue *>(alloca(alloca_size));
 #else
@@ -16225,8 +16190,8 @@ exception:
       LEPUS_FreeValue(ctx, *pval);
     }
   }
-#ifdef USE_VIRTUAL_STACK
-  if (need_free_local_buf) js_pop_virtual_sp(ctx, alloca_size);
+#ifdef ENABLE_VIRTUAL_STACK
+  if (need_free_local_buf) js_pop_virtual_sp(alloca_size);
 #endif
   rt->current_stack_frame = sf->prev_frame;
   return ret_val;

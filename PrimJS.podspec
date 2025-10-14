@@ -45,7 +45,7 @@ Pod::Spec.new do |s|
   s.compiler_flags = "-Wall", "-Wno-shorten-64-to-32", "-Os"
   s.ios.deployment_target = "9.0"
   s.pod_target_xcconfig = {
-    "GCC_PREPROCESSOR_DEFINITIONS" => "OS_IOS=1 JSC_OBJC_API_ENABLED=1 ENABLE_CODECACHE",
+    "GCC_PREPROCESSOR_DEFINITIONS" => "OS_IOS=1 JSC_OBJC_API_ENABLED=1 ENABLE_CODECACHE ENABLE_VIRTUAL_STACK=1",
     "CLANG_CXX_LANGUAGE_STANDARD" => "gnu++17",
     "HEADER_SEARCH_PATHS" => "\"$(PODS_TARGET_SRCROOT)/src\" \
                               \"${PODS_TARGET_SRCROOT}/src/interpreter\"",

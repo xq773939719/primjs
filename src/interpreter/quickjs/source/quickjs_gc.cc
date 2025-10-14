@@ -612,24 +612,15 @@ LEPUSRuntime *JS_NewRuntime2_GC(const LEPUSMallocFunctions *mf, void *opaque,
   memset(&ms, 0, sizeof(ms));
   ms.opaque = opaque;
   ms.malloc_limit = -1;
-#ifdef ENABLE_PRIMJS_SNAPSHOT
-  bool primjs_is_active = primjs_snapshot_enabled();
-#endif
 
-#ifdef ENABLE_PRIMJS_SNAPSHOT
-  const char *module_name = primjs_is_active ? MODULE_PRIMJS : MODULE_QUICK;
+  const char *module_name = MODULE_PRIMJS;
   MonitorEvent(MODULE_QUICK, DEFAULT_BIZ_NAME, "NewRuntime", module_name);
-#else
-  MonitorEvent(MODULE_QUICK, DEFAULT_BIZ_NAME, "NewRuntime", MODULE_QUICK);
-#endif
 
   rt = static_cast<LEPUSRuntime *>(system_malloc(sizeof(LEPUSRuntime)));
   if (!rt) return NULL;
   memset(rt, 0, sizeof(*rt));
   rt->gc_enable = true;
-#ifdef ENABLE_PRIMJS_SNAPSHOT
-  rt->use_primjs = primjs_is_active;
-#endif
+  rt->use_primjs = true;
   rt->init_time = get_daytime();
   rt->mf = *mf;
   if (!rt->mf.lepus_malloc_usable_size) {
@@ -1325,10 +1316,7 @@ LEPUSContext *JS_NewContextRaw_GC(LEPUSRuntime *rt) {
   ctx->no_lepus_strict_mode = false;
   init_list_head(&ctx->loaded_modules);
   JS_AddIntrinsicBasicObjects_GC(ctx);
-// <Primjs begin>
-#ifdef USE_VIRTUAL_STACK
-  InitVirtualStack(ctx);
-#endif
+  // <Primjs begin>
   ctx->next_function_id = 1;   // for lepusNG sourcemap, need to start from 1
   ctx->debuginfo_outside = 2;  // 2: uninitialize, 1: true, 0: false
   ctx->lynx_target_sdk_version = nullptr;
@@ -1343,23 +1331,11 @@ LEPUSContext *JS_NewContextRaw_GC(LEPUSRuntime *rt) {
   ctx->fg_ctx = static_cast<FinalizationRegistryContext *>(lepus_malloc(
       ctx, sizeof(FinalizationRegistryContext), ALLOC_TAG_WITHOUT_PTR));
   ctx->fg_ctx->ctx = ctx;
-  // <Primjs end>
 
-  // <primjs begin>
-#ifdef ENABLE_PRIMJS_SNAPSHOT
-  if (ctx->rt->use_primjs) {
-    PRIM_LOG("Use snapshot!\n");
-  } else {
-    PRIM_LOG("Use raw Quickjs!\n");
-  }
-#else
-  PRIM_LOG("Use raw Quickjs!\n");
-#endif
-#if defined(ENABLE_PRIMJS_SNAPSHOT)
+  PRIM_LOG("Use snapshot!\n");
   pthread_mutex_lock(&prim_init_mutex);
   PrimInit_GC(ctx);
   pthread_mutex_unlock(&prim_init_mutex);
-#endif
   // <primjs end>
   return ctx;
 }
@@ -1412,9 +1388,6 @@ LEPUSValue JS_GetClassProto_GC(LEPUSContext *ctx, LEPUSClassID class_id) {
 void JS_FreeContext_GC(LEPUSContext *ctx) {
   js_free_shape_null(ctx->rt, ctx->array_shape);
   list_del(&ctx->link);
-#ifdef USE_VIRTUAL_STACK
-  system_free(ctx->stack_limit);
-#endif
   ctx->fg_ctx->ctx = nullptr;
   if (ctx->napi_scope) {
     delete ctx->napi_scope;
@@ -2878,20 +2851,17 @@ static LEPUSValue js_c_function_data_call(LEPUSContext *ctx,
   int i;
 
   // <Primjs begin>
-#ifdef USE_VIRTUAL_STACK
+#ifdef ENABLE_VIRTUAL_STACK
   size_t arg_size = 0;
   LEPUSValue ret = LEPUS_UNDEFINED;
   func_scope.PushHandle(&ret, HANDLE_TYPE_LEPUS_VALUE);
 #endif
   /* XXX: could add the function on the stack for debug */
   if (unlikely(argc < s->length)) {
-#ifdef USE_VIRTUAL_STACK
-    arg_size = sizeof(arg_buf[0]) * s->length;
-    if (js_check_virtual_sp_overflow(ctx, arg_size)) {
-      return JS_ThrowStackOverflow_GC(ctx);
-    }
-
-    arg_buf = js_get_virtual_sp(ctx, arg_size);
+#ifdef ENABLE_VIRTUAL_STACK
+    size_t arg_size = sizeof(arg_buf[0]) * s->length;
+    arg_buf = js_get_virtual_sp(arg_size);
+    if (!arg_buf) return JS_ThrowStackOverflow_GC(ctx);
 #elif !defined(OS_WIN)
     arg_buf = static_cast<LEPUSValue *>(alloca(sizeof(arg_buf[0]) * s->length));
 #else
@@ -2904,9 +2874,9 @@ static LEPUSValue js_c_function_data_call(LEPUSContext *ctx,
     arg_buf = argv;
   }
   func_scope.PushLEPUSValueArrayHandle(arg_buf, s->length, false);
-#ifdef USE_VIRTUAL_STACK
+#ifdef ENABLE_VIRTUAL_STACK
   ret = s->func(ctx, this_val, argc, arg_buf, s->magic, s->data);
-  js_pop_virtual_sp(ctx, arg_size);
+  js_pop_virtual_sp(arg_size);
   return ret;
 #else
   return s->func(ctx, this_val, argc, arg_buf, s->magic, s->data);
@@ -7872,9 +7842,6 @@ QJS_STATIC LEPUSValue js_call_c_function(LEPUSContext *ctx,
   rt->current_stack_frame = sf;
 
   // <Primjs begin>
-#ifdef USE_VIRTUAL_STACK
-  size_t alloca_size = 0;
-#endif
   if (unlikely(argc < arg_count)) {
     /* ensure that at least argc_count arguments are readable */
 #if !defined(OS_WIN)

@@ -677,13 +677,9 @@ typedef enum OPCodeEnum {
 struct FinalizationRegistryContext;
 
 struct LEPUSContext {
+  // <primjs begin>
 #ifdef ENABLE_PRIMJS_SNAPSHOT
   address (*dispatch_table)[OP_COUNT];
-#endif
-
-#if defined(USE_VIRTUAL_STACK) || defined(ENABLE_PRIMJS_SNAPSHOT)
-  uint8_t *stack_limit;
-  uint8_t *stack;
 #endif
 // <primjs end>
 #ifndef ALLOCATE_WINDOWS
@@ -1912,6 +1908,11 @@ typedef struct JSToken {
 #ifndef NO_QUICKJS_COMPILER
 LEPUSValue js_dynamic_import(LEPUSContext *ctx, LEPUSValueConst specifier);
 #endif
+
+LEPUSValue *js_get_stack_gc(LEPUSContext *ctx, size_t alloca_size);
+LEPUSValue *js_get_virtual_sp(size_t alloc_size);
+
+void js_pop_virtual_sp(size_t size);
 
 #ifdef __cplusplus
 }
@@ -3186,7 +3187,6 @@ JSAtom __JS_NewAtomInit_NOGC(LEPUSRuntime *rt, const char *str, int len,
 JSAtom __JS_NewAtomInit(LEPUSRuntime *rt, const char *str, int len,
                         int atom_type, int is_const);
 int init_bigint_name(LEPUSRuntime *rt);
-void InitVirtualStack(LEPUSContext *ctx);
 uintptr_t get_thread_stack_limit();
 
 inline uintptr_t get_thread_stack_limit2() {
@@ -3196,19 +3196,43 @@ inline uintptr_t get_thread_stack_limit2() {
 
 uint32_t map_hash_key(LEPUSContext *ctx, LEPUSValueConst key);
 
-#ifdef USE_VIRTUAL_STACK
-inline BOOL js_check_virtual_sp_overflow(LEPUSContext *ctx, size_t size) {
-  return (ctx->stack - size < ctx->stack_limit);
-}
+#ifdef ENABLE_VIRTUAL_STACK
 
-inline LEPUSValue *js_get_virtual_sp(LEPUSContext *ctx, size_t alloc_size) {
-  ctx->stack -= alloc_size;
-  return reinterpret_cast<LEPUSValue *>(ctx->stack);
-}
+class VirtualStack {
+ public:
+  static auto &GetThreadLocalInstance() {
+    thread_local VirtualStack stack;
+    return stack;
+  }
 
-inline void js_pop_virtual_sp(LEPUSContext *ctx, size_t size) {
-  ctx->stack += size;
-}
+  explicit VirtualStack() {
+    stack_limit_ = reinterpret_cast<uint8_t *>(
+        new uint64_t[kDefaultStackSize / sizeof(uint64_t)]);
+    stack_ = stack_limit_ + kDefaultStackSize;
+  }
+
+  ~VirtualStack() { delete[] (reinterpret_cast<uint64_t *>(stack_limit_)); }
+
+  uint8_t *PushVirtualSp(size_t stack_size) {
+    size_t alloc_size = alignment(stack_size);
+    if (stack_ - alloc_size < stack_limit_) {
+      // stack overflow
+      return nullptr;
+    }
+    return stack_ -= alloc_size;
+  }
+
+  void PopVirtualSp(size_t stack_size) { stack_ += alignment(stack_size); }
+
+ private:
+  size_t alignment(size_t stack_size) {
+    return (stack_size + kAlignSize - 1) & ~(kAlignSize - 1);
+  }
+  static constexpr size_t kDefaultStackSize = 2 * 1024 * 1024;  // 2MB
+  static constexpr size_t kAlignSize = 8;
+  uint8_t *stack_{nullptr};
+  uint8_t *stack_limit_{nullptr};
+};
 
 #endif
 #endif  // SRC_INTERPRETER_QUICKJS_INCLUDE_QUICKJS_INNER_H_

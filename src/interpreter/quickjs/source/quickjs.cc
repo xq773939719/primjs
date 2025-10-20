@@ -996,7 +996,7 @@ LEPUSRuntime *LEPUS_NewRuntime2(const LEPUSMallocFunctions *mf, void *opaque,
   rt->malloc_state = ms;
   rt->malloc_gc_threshold = 256 * 1024;
   rt->malloc_state.allocate_state.runtime = static_cast<void *>(rt);
-  set_gc_info_threadhold(&rt->malloc_state.allocate_state, mode);
+  set_gc_info_threshold(&rt->malloc_state.allocate_state, mode);
 
   init_list_head(&rt->context_list);
   init_list_head(&rt->obj_list);
@@ -1078,6 +1078,9 @@ void JS_ResetRuntimeForEffect(LEPUSRuntime *rt, const LEPUSMallocFunctions *mf,
     /* use dummy function if none provided */
     rt->mf.lepus_malloc_usable_size = js_malloc_usable_size_unknown;
   }
+  ms.allocate_state.runtime = static_cast<void *>(rt);
+  ms.allocate_state.gc_info_threshold =
+      rt->malloc_state.allocate_state.gc_info_threshold;
   rt->malloc_state = ms;
 
   init_list_head(&rt->obj_list);
@@ -1218,8 +1221,8 @@ LEPUSRuntime *LEPUS_NewRuntimeWithMode(uint32_t mode) {
   return LEPUS_NewRuntime2(&def_malloc_funcs, NULL, mode);
 }
 
-void set_gc_info_threadhold(mstate s, uint32_t mode) {
-  s->gc_info_threadhold = ((mode & GC_INFO_THREADHOLD_MB) >> 24) * MB;
+void set_gc_info_threshold(mstate s, uint32_t mode) {
+  s->gc_info_threshold = ((mode & GC_INFO_THRESHOLD_MB) >> 24) * MB;
   s->gc_info_interval_size = 0;
 }
 

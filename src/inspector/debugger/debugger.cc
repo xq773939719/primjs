@@ -2351,7 +2351,8 @@ LEPUSDebuggerInfo::~LEPUSDebuggerInfo() {
     DeleteQueue(qjs_queue);
   }
 
-  for (int32_t i = 0; i < breakpoints_num;) {
+  int32_t bp_num = breakpoints_num;
+  for (int32_t i = 0; i < bp_num; i++) {
     DeleteBreakpoint(this, i);
   }
   if (!ctx->gc_enable) {

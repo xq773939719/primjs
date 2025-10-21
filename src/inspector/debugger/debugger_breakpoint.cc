@@ -739,11 +739,6 @@ void DeleteBreakpoint(LEPUSDebuggerInfo *info, uint32_t bp_index) {
     LEPUS_FreeValue(ctx, bp->condition);
     lepus_free(ctx, bp->script_url);
   }
-  int32_t move = info->breakpoints_num - bp_index - 1;
-  if (move > 0) {
-    // just move, no delete. use breakpoint number to control
-    memmove(bp, info->bps + (bp_index + 1), move * sizeof(LEPUSBreakpoint));
-  }
   // breakpoint num -1
   info->breakpoints_num -= 1;
   return;
@@ -758,19 +753,19 @@ static void DeleteBreakpointById(LEPUSDebuggerInfo *info,
   LEPUSContext *ctx = info->ctx;
   if (ctx && deleted_breakpoint_id) {
     int32_t bp_num = info->breakpoints_num;
-    for (int32_t i = 0; i < bp_num; i++) {
+    for (int32_t i = 0, cur_index = 0; i < bp_num; i++) {
       LEPUSBreakpoint *bp = info->bps + i;
       LEPUSValue id_str = bp->breakpoint_id;
       const char *current_breakpoint_id = LEPUS_ToCString(ctx, id_str);
       if (current_breakpoint_id) {
         if (strcmp(current_breakpoint_id, deleted_breakpoint_id) == 0) {
           DeleteBreakpoint(info, i);
-          if (!ctx->rt->gc_enable)
-            LEPUS_FreeCString(ctx, current_breakpoint_id);
-          return;
         } else {
-          if (!ctx->rt->gc_enable)
-            LEPUS_FreeCString(ctx, current_breakpoint_id);
+          info->bps[cur_index] = *bp;
+          cur_index++;
+        }
+        if (!ctx->rt->gc_enable) {
+          LEPUS_FreeCString(ctx, current_breakpoint_id);
         }
       }
     }

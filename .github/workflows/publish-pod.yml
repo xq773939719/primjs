@@ -6,8 +6,8 @@ on:
       - '*'
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'release tag'
+      version:
+        description: 'version of pod'
         required: false
         type: string
 
@@ -22,7 +22,7 @@ jobs:
         id: get_version
         run: |-
           if [ ${{ github.event_name }} == 'workflow_dispatch' ]; then
-            version=${{ github.event.inputs.tag }}
+            version=${{ github.event.inputs.version }}
           else
             version=$(echo ${{ github.ref }} | awk -F "/" '{print $3}')
           fi
@@ -49,6 +49,7 @@ jobs:
         env:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.REPO_PRIMJS_COCOAPODS_TRUNK_TOKEN }}
           POD_VERSION: ${{ needs.get-version.outputs.version }}
+          PRIMJS_COMMIT_ID: ${{ github.sha }}
         run: |-
           pod repo add-cdn trunk https://cdn.cocoapods.org/
-          COCOAPODS_TRUNK_TOKEN=$COCOAPODS_TRUNK_TOKEN POD_VERSION=$POD_VERSION pod trunk push PrimJS.podspec  --skip-import-validation --allow-warnings
+          COCOAPODS_TRUNK_TOKEN=$COCOAPODS_TRUNK_TOKEN POD_VERSION=$POD_VERSION PRIMJS_COMMIT_ID=$PRIMJS_COMMIT_ID pod trunk push PrimJS.podspec  --skip-import-validation --allow-warnings

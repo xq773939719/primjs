@@ -13618,7 +13618,7 @@ QJS_STATIC LEPUSValue js_call_c_function(LEPUSContext *ctx,
   if (unlikely(argc < arg_count)) {
     /* ensure that at least argc_count arguments are readable */
 #ifdef ENABLE_VIRTUAL_STACK
-    size_t alloca_size = sizeof(arg_buf[0]) * arg_count;
+    alloca_size = sizeof(arg_buf[0]) * arg_count;
     arg_buf = js_get_virtual_sp(alloca_size);
     if (!arg_buf) {
       return JS_ThrowStackOverflow(ctx);

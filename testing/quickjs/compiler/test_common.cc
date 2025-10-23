@@ -1467,4 +1467,19 @@ TEST_F(CommonQjsTest, NotAFunctionException) {
   }
 }
 
+TEST_F(CommonQjsTest, BigIntOverFlow) {
+  std::string src = R"(
+    const len = 79536432;
+    console.log("Creating string of length " + len);
+    let digits = '1'.repeat(len);
+    console.log("String created. Calling BigInt().");
+    let b = BigInt(digits); // Radix 10
+    console.log("BigInt created.");
+  )";
+
+  auto ret = LEPUS_Eval(ctx_, src.c_str(), src.size(), "test.js",
+                        LEPUS_EVAL_TYPE_GLOBAL);
+  if (!ctx_->gc_enable) LEPUS_FreeValue(ctx_, ret);
+}
+
 }  // namespace common_qjs_test

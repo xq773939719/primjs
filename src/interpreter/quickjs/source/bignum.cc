@@ -1040,7 +1040,8 @@ int js_bigint_cmp(LEPUSContext *ctx, const JSBigInt *a, const JSBigInt *b) {
    = 10, 2, 8 or 16. */
 JSBigInt *js_bigint_from_string(LEPUSContext *ctx, const char *str, int radix) {
   const char *p = str;
-  int is_neg, n_digits, n_limbs, len, log2_radix, n_bits, i;
+  int is_neg, log2_radix;
+  size_t n_digits, n_bits, len, i, n_limbs;
   JSBigInt *r;
   js_limb_t v, c, h;
 

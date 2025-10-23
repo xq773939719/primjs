@@ -167,18 +167,20 @@ int main(int argc, char **argv) {
   lepus_std_add_helpers(ctx, 0, NULL);
 
   LEPUSValue global_obj = LEPUS_GetGlobalObject(ctx);
-  LEPUSValue cfunc = LEPUS_NewCFunction(ctx, js_std_load_file, "read", 1);
-  HandleScope func_scope(ctx, &cfunc, HANDLE_TYPE_LEPUS_VALUE);
-  LEPUS_SetPropertyStr(ctx, global_obj, "read", cfunc);
-  cfunc = LEPUS_NewCFunction(
-      ctx,
-      [](LEPUSContext *ctx, LEPUSValue this_obj, int32_t argc,
-         LEPUSValue *argv) {
-        LEPUS_RunGC(LEPUS_GetRuntime(ctx));
-        return LEPUS_UNDEFINED;
-      },
-      "", 0);
-  LEPUS_SetPropertyStr(ctx, global_obj, "gc", cfunc);
+  {
+    LEPUSValue cfunc = LEPUS_NewCFunction(ctx, js_std_load_file, "read", 1);
+    HandleScope func_scope(ctx, &cfunc, HANDLE_TYPE_LEPUS_VALUE);
+    LEPUS_SetPropertyStr(ctx, global_obj, "read", cfunc);
+    cfunc = LEPUS_NewCFunction(
+        ctx,
+        [](LEPUSContext *ctx, LEPUSValue this_obj, int32_t argc,
+           LEPUSValue *argv) {
+          LEPUS_RunGC(LEPUS_GetRuntime(ctx));
+          return LEPUS_UNDEFINED;
+        },
+        "", 0);
+    LEPUS_SetPropertyStr(ctx, global_obj, "gc", cfunc);
+  }
   if (!LEPUS_IsGCMode(ctx)) {
     LEPUS_FreeValue(ctx, global_obj);
   }

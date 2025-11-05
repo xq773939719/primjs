@@ -22,23 +22,9 @@ class QjsDebugPropertiesMethods : public ::testing::Test {
     QjsDebugQueue::GetReceiveMessageQueue() = std::queue<std::string>();
     QjsDebugQueue::GetSendMessageQueue() = std::queue<std::string>();
     rt_ = LEPUS_NewRuntime();
-    void* funcs[14] = {
-        reinterpret_cast<void*>(RunMessageLoopOnPauseCBWithResume),
-        reinterpret_cast<void*>(QuitMessageLoopOnPauseCB),
-        reinterpret_cast<void*>(GetMessagesCB),
-        reinterpret_cast<void*>(SendResponseCB),
-        reinterpret_cast<void*>(SendNotificationCB),
-        nullptr,
-        reinterpret_cast<void*>(DebuggerExceptionCB),
-        reinterpret_cast<void*>(InspectorCheckCB),
-        reinterpret_cast<void*>(ConsoleMessageCB),
-        reinterpret_cast<void*>(SendScriptParsedMessageCB),
-        reinterpret_cast<void*>(SendConsoleMessageCB),
-        reinterpret_cast<void*>(SendScriptFailToParsedMessageCB),
-        nullptr,
-        reinterpret_cast<void*>(IsRuntimeDevtoolOnCB)};
+    auto funcs = GetQJSCallbackFuncs();
     ctx_ = LEPUS_NewContext(rt_);
-    PrepareQJSDebuggerDefer(ctx_, reinterpret_cast<void**>(funcs), 14);
+    PrepareQJSDebuggerDefer(ctx_, funcs.data(), funcs.size());
     QJSDebuggerInitialize(ctx_);
   }
 
@@ -67,12 +53,12 @@ static void PrepareGetInternalProperties2(LEPUSRuntime* rt, int32_t bp_line) {
                      reinterpret_cast<void*>(SendResponseCB),
                      reinterpret_cast<void*>(SendNotificationCB),
                      nullptr,
-                     reinterpret_cast<void*>(DebuggerExceptionCB),
-                     reinterpret_cast<void*>(InspectorCheckCB),
+                     nullptr,
+                     nullptr,
                      reinterpret_cast<void*>(ConsoleMessageCB),
-                     reinterpret_cast<void*>(SendScriptParsedMessageCB),
-                     reinterpret_cast<void*>(SendConsoleMessageCB),
-                     reinterpret_cast<void*>(SendScriptFailToParsedMessageCB),
+                     nullptr,
+                     nullptr,
+                     nullptr,
                      nullptr,
                      reinterpret_cast<void*>(IsRuntimeDevtoolOnCB)};
   RegisterQJSDebuggerCallbacks(rt, reinterpret_cast<void**>(funcs), 14);

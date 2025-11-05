@@ -151,10 +151,6 @@ LEPUSValue GetLocation(LEPUSContext *ctx, int32_t line, int64_t column,
 // https://chromedevtools.github.io/devtools-protocol/tot/Debugger/#method-setVariableValue
 void HandleSetVariableValue(DebuggerParams *);
 
-// send console api called event.
-// message
-void SendConsoleAPICalled(LEPUSContext *ctx, LEPUSValue *msg);
-
 class ExceptionBreakpointScope {
  public:
   ExceptionBreakpointScope(LEPUSDebuggerInfo *info, uint32_t tmp_val) {

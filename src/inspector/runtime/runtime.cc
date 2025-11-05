@@ -132,7 +132,7 @@ void HandleRuntimeEnable(DebuggerParams* runtime_options) {
   int32_t console_length = info->console.length;
   for (int idx = 0; idx < console_length; idx++) {
     LEPUSValue msg = LEPUS_GetPropertyUint32(ctx, info->console.messages, idx);
-    SendConsoleAPICalled(ctx, &msg);
+    SendConsoleAPICalledNotification(ctx, &msg);
     if (!ctx->rt->gc_enable) LEPUS_FreeValue(ctx, msg);
   }
   LEPUSValue result = LEPUS_NewObject(ctx);

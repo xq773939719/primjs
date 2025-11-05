@@ -617,28 +617,15 @@ QJS_STATIC void SendParseScriptNotification(LEPUSContext *ctx,
   if (ctx->debugger_info->is_debugger_enabled) {
     if (!err) {
       if (view_id == -1) {
-        auto cb = ctx->rt->debugger_callbacks_.script_parsed_ntfy;
-        if (cb) {
-          cb(ctx, script);
-        }
+        SendScriptParsedNotification(ctx, script);
       } else {
-        auto cb = ctx->rt->debugger_callbacks_.script_parsed_ntfy_with_view_id;
-        if (cb) {
-          cb(ctx, script, view_id);
-        }
+        SendScriptParsedNotificationWithViewID(ctx, script, view_id);
       }
     } else {
       if (view_id == -1) {
-        auto cb = ctx->rt->debugger_callbacks_.script_fail_parse_ntfy;
-        if (cb) {
-          cb(ctx, script);
-        }
+        SendScriptFailToParseNotification(ctx, script);
       } else {
-        auto cb =
-            ctx->rt->debugger_callbacks_.script_fail_parse_ntfy_with_view_id;
-        if (cb) {
-          cb(ctx, script, view_id);
-        }
+        SendScriptFailToParseNotificationWithViewID(ctx, script, view_id);
       }
     }
   }
@@ -767,10 +754,7 @@ void DebuggerPause(LEPUSContext *ctx, LEPUSValue val, const uint8_t *pc) {
   HandleScope func_scope{ctx, &name, HANDLE_TYPE_CSTRING};
   // only pause when breakpoint is active
   if (info->breakpoints_is_active && name && strcmp(name, "debugger") == 0) {
-    auto paused_callback = ctx->rt->debugger_callbacks_.debugger_paused;
-    if (paused_callback) {
-      paused_callback(ctx, pc);
-    }
+    PauseOnDebuggerKeyword(info, pc);
   }
   if (!ctx->rt->gc_enable) LEPUS_FreeCString(ctx, name);
   return;
@@ -1128,10 +1112,7 @@ QJS_STATIC void CommonLog(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
 
   LEPUSRuntime *rt = ctx->rt;
   if (ctx->debugger_info->is_runtime_enabled) {
-    auto cb = rt->debugger_callbacks_.console_api_called_ntfy;
-    if (cb) {
-      cb(ctx, &console_msg);
-    }
+    SendConsoleAPICalledNotification(ctx, &console_msg);
   }
   auto console_message_cb = rt->debugger_callbacks_.console_message;
   if (console_message_cb) {
@@ -1843,7 +1824,12 @@ void DeleteConsoleMessageWithURL(LEPUSContext *ctx, const char *url) {
   info->console.length = new_msg_len;
 }
 
-void SendConsoleAPICalled(LEPUSContext *ctx, LEPUSValue *msg) {
+/**
+ * @brief send console-message notification to devtools frontend
+ * ref:
+ * https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#event-consoleAPICalled
+ */
+void SendConsoleAPICalledNotification(LEPUSContext *ctx, LEPUSValue *msg) {
   uint32_t argc = LEPUS_GetLength(ctx, *msg);
   LEPUSValue params = LEPUS_NewObject(ctx);
   HandleScope func_scope(ctx, &params, HANDLE_TYPE_LEPUS_VALUE);
@@ -1874,15 +1860,6 @@ void SendConsoleAPICalled(LEPUSContext *ctx, LEPUSValue *msg) {
     LEPUS_SetPropertyUint32(ctx, args, idx, v2);
   }
   SendNotification(ctx, "Runtime.consoleAPICalled", params, -1);
-}
-
-/**
- * @brief send console-message notification to devtools frontend
- * ref:
- * https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#event-consoleAPICalled
- */
-void SendConsoleAPICalledNotification(LEPUSContext *ctx, LEPUSValue *msg) {
-  SendConsoleAPICalled(ctx, msg);
 }
 
 /**

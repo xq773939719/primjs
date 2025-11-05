@@ -660,21 +660,6 @@ typedef LEPUSValue LEPUSCFunctionData(LEPUSContext *ctx,
 
 struct LEPUSMallocFunctions;
 // <Primjs begin>
-typedef struct LEPUSDebuggerCallbacks {
-  // callbacks for lepusNG debugger
-  void (*run_message_loop_on_pause)(LEPUSContext *ctx);
-  void (*quit_message_loop_on_pause)(LEPUSContext *ctx);
-  void (*get_messages)(LEPUSContext *ctx);
-  void (*send_response)(LEPUSContext *ctx, int32_t message_id,
-                        const char *message);
-  void (*send_notification)(LEPUSContext *ctx, const char *message);
-  void (*free_messages)(LEPUSContext *ctx, char **messages, int32_t size);
-
-  void (*inspector_check)(LEPUSContext *ctx);
-  void (*debugger_exception)(LEPUSContext *ctx);
-  uint8_t (*is_devtool_on)(LEPUSContext *ctx);
-} LEPUSDebuggerCallbacks;
-
 typedef void LEPUS_MarkFunc(LEPUSRuntime *rt, LEPUSValueConst val,
                             uint64_t trace_tool);
 

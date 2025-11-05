@@ -25,10 +25,6 @@ void RunMessageLoopOnPauseCBWithSetVariableBeforeResume(LEPUSContext* ctx) {
   ProcessPausedMessages(ctx, resume_message.c_str());
 }
 
-void PauseOnDebuggerKeywordctx(LEPUSContext* ctx, const uint8_t* cur_pc) {
-  PauseOnDebuggerKeyword(ctx->debugger_info, cur_pc);
-}
-
 class QjsDebugPause : public ::testing::Test {
  protected:
   QjsDebugPause() = default;
@@ -45,13 +41,13 @@ class QjsDebugPause : public ::testing::Test {
                        reinterpret_cast<void*>(SendResponseCB),
                        reinterpret_cast<void*>(SendNotificationCB),
                        nullptr,
-                       reinterpret_cast<void*>(DebuggerExceptionCB),
-                       reinterpret_cast<void*>(InspectorCheckCB),
+                       nullptr,
+                       nullptr,
                        reinterpret_cast<void*>(ConsoleMessageCB),
-                       reinterpret_cast<void*>(SendScriptParsedMessageCB),
-                       reinterpret_cast<void*>(SendConsoleMessageCB),
-                       reinterpret_cast<void*>(SendScriptFailToParsedMessageCB),
-                       reinterpret_cast<void*>(PauseOnDebuggerKeywordctx),
+                       nullptr,
+                       nullptr,
+                       nullptr,
+                       nullptr,
                        reinterpret_cast<void*>(IsRuntimeDevtoolOnCB)};
     ctx_ = LEPUS_NewContext(rt_);
     PrepareQJSDebuggerDefer(ctx_, reinterpret_cast<void**>(funcs), 14);

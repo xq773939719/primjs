@@ -18,18 +18,18 @@ namespace qjs_debug_test {
   V(3, SendResponseCB)                    \
   V(4, SendNotificationCB)                \
   V(5, NULL)                              \
-  V(6, DebuggerExceptionCB)               \
-  V(7, InspectorCheckCB)                  \
+  V(6, NULL)                              \
+  V(7, NULL)                              \
   V(8, ConsoleMessageCB)                  \
-  V(9, SendScriptParsedMessageCB)         \
-  V(10, SendConsoleMessageCB)             \
-  V(11, SendScriptFailToParsedMessageCB)  \
+  V(9, NULL)                              \
+  V(10, NULL)                             \
+  V(11, NULL)                             \
   V(12, NULL)                             \
   V(13, IsRuntimeDevtoolOnCB)             \
   V(14, SendResponseWithViewIDCB)         \
   V(15, SendNtfyCBWithViewID)             \
-  V(16, ScriptParsedWithViewIDCB)         \
-  V(17, ScriptFailToParseWithViewIDCB)    \
+  V(16, NULL)                             \
+  V(17, NULL)                             \
   V(18, SetSessionEnableMapCB)            \
   V(19, GetSessionStateCB)                \
   V(20, GetSessionEnableStateCB)          \
@@ -230,13 +230,6 @@ void SendNotificationCB(LEPUSContext* ctx, const char* message) {
   std::cout << "notification message: " << message << std::endl;
 }
 
-void InspectorCheckCB(LEPUSContext* ctx) {
-  DoInspectorCheck(ctx);
-  return;
-}
-
-void DebuggerExceptionCB(LEPUSContext* ctx) { HandleDebuggerException(ctx); }
-
 void ConsoleMessageCB(LEPUSContext* ctx, int tag, LEPUSValueConst* argv,
                       int argc) {
   int i;
@@ -252,14 +245,6 @@ void ConsoleMessageCB(LEPUSContext* ctx, int tag, LEPUSValueConst* argv,
   putchar('\n');
 }
 
-void SendScriptParsedMessageCB(LEPUSContext* ctx, LEPUSScriptSource* script) {
-  SendScriptParsedNotification(ctx, script);
-}
-
-void SendConsoleMessageCB(LEPUSContext* ctx, LEPUSValue* console_msg) {
-  SendConsoleAPICalledNotification(ctx, console_msg);
-}
-
 void GetMessagesCB(LEPUSContext* ctx) {
   LEPUSDebuggerInfo* info = ctx->debugger_info;
   if (info) {
@@ -272,11 +257,6 @@ void GetMessagesCB(LEPUSContext* ctx) {
       ProcessProtocolMessages(info);
     }
   }
-}
-
-void SendScriptFailToParsedMessageCB(LEPUSContext* ctx,
-                                     LEPUSScriptSource* script) {
-  SendScriptFailToParseNotification(ctx, script);
 }
 
 bool js_run(LEPUSContext* ctx, const char* filename, LEPUSValue& ret) {
@@ -312,16 +292,6 @@ void SendNtfyCBWithViewID(LEPUSContext* ctx, const char* message,
   QjsDebugQueue::GetReceiveMessageQueue().push("view id: " + view_id_str);
   std::cout << "notification message: " << message
             << " with view id: " << view_id_str << std::endl;
-}
-
-void ScriptParsedWithViewIDCB(LEPUSContext* ctx, LEPUSScriptSource* script,
-                              int32_t view_id) {
-  SendScriptParsedNotificationWithViewID(ctx, script, view_id);
-}
-
-void ScriptFailToParseWithViewIDCB(LEPUSContext* ctx, LEPUSScriptSource* script,
-                                   int32_t view_id) {
-  SendScriptFailToParseNotificationWithViewID(ctx, script, view_id);
 }
 
 void SetSessionEnableMapCB(LEPUSContext* ctx, int32_t view_id,
@@ -440,12 +410,12 @@ void PrepareGetProperties(LEPUSRuntime* rt, int32_t bp_line) {
                      reinterpret_cast<void*>(SendResponseCB),
                      reinterpret_cast<void*>(SendNotificationCB),
                      nullptr,
-                     reinterpret_cast<void*>(DebuggerExceptionCB),
-                     reinterpret_cast<void*>(InspectorCheckCB),
+                     nullptr,
+                     nullptr,
                      reinterpret_cast<void*>(ConsoleMessageCB),
-                     reinterpret_cast<void*>(SendScriptParsedMessageCB),
-                     reinterpret_cast<void*>(SendConsoleMessageCB),
-                     reinterpret_cast<void*>(SendScriptFailToParsedMessageCB),
+                     nullptr,
+                     nullptr,
+                     nullptr,
                      nullptr,
                      reinterpret_cast<void*>(IsRuntimeDevtoolOnCB)};
   RegisterQJSDebuggerCallbacks(rt, reinterpret_cast<void**>(funcs), 14);

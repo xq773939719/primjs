@@ -87,21 +87,10 @@ void SendResponseCB(LEPUSContext* ctx, int32_t message_id, const char* message);
 
 void SendNotificationCB(LEPUSContext* ctx, const char* message);
 
-void InspectorCheckCB(LEPUSContext* ctx);
-
-void DebuggerExceptionCB(LEPUSContext* ctx);
-
 void ConsoleMessageCB(LEPUSContext* ctx, int tag, LEPUSValueConst* argv,
                       int argc);
 
-void SendScriptParsedMessageCB(LEPUSContext* ctx, LEPUSScriptSource* script);
-
-void SendConsoleMessageCB(LEPUSContext* ctx, LEPUSValue* console_msg);
-
 void GetMessagesCB(LEPUSContext* ctx);
-
-void SendScriptFailToParsedMessageCB(LEPUSContext* ctx,
-                                     LEPUSScriptSource* script);
 
 bool js_run(LEPUSContext* ctx, const char* filename, LEPUSValue& ret);
 
@@ -110,12 +99,6 @@ void SendResponseWithViewIDCB(LEPUSContext* ctx, int32_t message_id,
 
 void SendNtfyCBWithViewID(LEPUSContext* ctx, const char* message,
                           int32_t view_id);
-
-void ScriptParsedWithViewIDCB(LEPUSContext* ctx, LEPUSScriptSource* script,
-                              int32_t view_id);
-
-void ScriptFailToParseWithViewIDCB(LEPUSContext* ctx, LEPUSScriptSource* script,
-                                   int32_t view_id);
 
 void SetSessionEnableMapCB(LEPUSContext* ctx, int32_t view_id,
                            int32_t method_type);

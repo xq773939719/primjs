@@ -21,6 +21,8 @@ extern "C" {
 #include <memory>
 #include <string>
 
+#include "test_debug_base.h"
+
 extern LEPUSValue js_array_every(LEPUSContext* ctx, LEPUSValueConst this_val,
                                  int argc, LEPUSValueConst* argv, int special);
 
@@ -93,12 +95,6 @@ static void SendNotificationCB(LEPUSContext* ctx, const char* message) {
   std::cout << "notification message: " << message << std::endl;
 }
 
-static void InspectorCheckCB(LEPUSContext* ctx) { DoInspectorCheck(ctx); }
-
-static void DebuggerExceptionCB(LEPUSContext* ctx) {
-  HandleDebuggerException(ctx);
-}
-
 static void ConsoleMessageCB(LEPUSContext* ctx, int tag, LEPUSValueConst* argv,
                              int argc) {
   int i;
@@ -114,34 +110,6 @@ static void ConsoleMessageCB(LEPUSContext* ctx, int tag, LEPUSValueConst* argv,
   putchar('\n');
 }
 
-static void SendScriptParsedMessageCB(LEPUSContext* ctx,
-                                      LEPUSScriptSource* script) {
-  SendScriptParsedNotification(ctx, script);
-}
-
-static void SendConsoleMessageCB(LEPUSContext* ctx, LEPUSValue* console_msg) {
-  SendConsoleAPICalledNotification(ctx, console_msg);
-}
-
-static void GetMessagesCB(LEPUSContext* ctx) {
-  LEPUSDebuggerInfo* info = ctx->debugger_info;
-  if (info) {
-    while (!QjsDebugQueue::GetSendMessageQueue().empty()) {
-      std::string m = QjsDebugQueue::GetSendMessageQueue().front();
-      if (m.length()) {
-        PushBackQueue(GetDebuggerMessageQueue(info), m.c_str());
-      }
-      QjsDebugQueue::GetSendMessageQueue().pop();
-      ProcessProtocolMessages(info);
-    }
-  }
-}
-
-static void SendScriptFailToParsedMessageCB(LEPUSContext* ctx,
-                                            LEPUSScriptSource* script) {
-  SendScriptFailToParseNotification(ctx, script);
-}
-
 class QjsCpuProfilerMethods : public ::testing::Test {
  protected:
   QjsCpuProfilerMethods() = default;
@@ -151,22 +119,8 @@ class QjsCpuProfilerMethods : public ::testing::Test {
     QjsDebugQueue::GetReceiveMessageQueue() = std::queue<std::string>();
     QjsDebugQueue::GetSendMessageQueue() = std::queue<std::string>();
     rt_ = LEPUS_NewRuntime();
-    void* funcs[14] = {
-        reinterpret_cast<void*>(RunMessageLoopOnPauseCBWithResume),
-        reinterpret_cast<void*>(QuitMessageLoopOnPauseCB),
-        reinterpret_cast<void*>(GetMessagesCB),
-        reinterpret_cast<void*>(SendResponseCB),
-        reinterpret_cast<void*>(SendNotificationCB),
-        nullptr,
-        reinterpret_cast<void*>(DebuggerExceptionCB),
-        reinterpret_cast<void*>(InspectorCheckCB),
-        reinterpret_cast<void*>(ConsoleMessageCB),
-        reinterpret_cast<void*>(SendScriptParsedMessageCB),
-        reinterpret_cast<void*>(SendConsoleMessageCB),
-        reinterpret_cast<void*>(SendScriptFailToParsedMessageCB),
-        nullptr,
-        reinterpret_cast<void*>(IsRuntimeDevtoolOnCB)};
-    RegisterQJSDebuggerCallbacks(rt_, reinterpret_cast<void**>(funcs), 14);
+    auto funcs = GetQJSCallbackFuncs();
+    RegisterQJSDebuggerCallbacks(rt_, funcs.data(), funcs.size());
     ctx_ = LEPUS_NewContext(rt_);
     RegisterAssert(ctx_);
     QJSDebuggerInitialize(ctx_);

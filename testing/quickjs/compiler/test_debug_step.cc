@@ -43,12 +43,12 @@ class QjsDebugStep : public ::testing::Test {
                        reinterpret_cast<void*>(SendResponseCB),
                        reinterpret_cast<void*>(SendNotificationCB),
                        nullptr,
-                       reinterpret_cast<void*>(DebuggerExceptionCB),
-                       reinterpret_cast<void*>(InspectorCheckCB),
+                       nullptr,
+                       nullptr,
                        reinterpret_cast<void*>(ConsoleMessageCB),
-                       reinterpret_cast<void*>(SendScriptParsedMessageCB),
-                       reinterpret_cast<void*>(SendConsoleMessageCB),
-                       reinterpret_cast<void*>(SendScriptFailToParsedMessageCB),
+                       nullptr,
+                       nullptr,
+                       nullptr,
                        nullptr,
                        reinterpret_cast<void*>(IsRuntimeDevtoolOnCB)};
     ctx_ = LEPUS_NewContext(rt_);

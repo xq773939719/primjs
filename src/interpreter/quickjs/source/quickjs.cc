@@ -6789,9 +6789,8 @@ void build_backtrace(LEPUSContext *ctx, LEPUSValueConst error_obj,
   // <Primjs begin>
 // if there is an exception, debugger set system paused if necessary
 #ifdef ENABLE_QUICKJS_DEBUGGER
-  if (is_debug_mode && !is_parse_error &&
-      ctx->rt->debugger_callbacks_.debugger_exception) {
-    ctx->rt->debugger_callbacks_.debugger_exception(ctx);
+  if (is_debug_mode && !is_parse_error) {
+    HandleDebuggerException(ctx);
   }
 #endif
   // <Primjs end>
@@ -13860,8 +13859,9 @@ QJS_STATIC LEPUSValue JS_CallInternal(LEPUSContext *caller_ctx,
   JSVarRef **var_refs;
   size_t alloca_size;
 #ifdef ENABLE_QUICKJS_DEBUGGER
-  if (caller_ctx->debugger_mode && (!rt->debugger_callbacks_.inspector_check ||
-                                    !caller_ctx->debugger_info)) {
+  if (caller_ctx->debugger_mode &&
+      (!rt->debugger_callbacks_.run_message_loop_on_pause ||
+       !caller_ctx->debugger_info)) {
     caller_ctx->debugger_mode = false;
   }
   BOOL is_debug_mode = caller_ctx->debugger_mode;

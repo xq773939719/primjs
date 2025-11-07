@@ -1482,4 +1482,53 @@ TEST_F(CommonQjsTest, BigIntOverFlow) {
   if (!ctx_->gc_enable) LEPUS_FreeValue(ctx_, ret);
 }
 
+TEST_F(CommonQjsTest, SetArrayLengthUAF) {
+  std::string src = R"(
+    let a = [0];
+    let l = {
+      valueOf: function () {
+        a["x"] = "y";
+        return 1;
+      },
+    };
+    a.length = l;
+  )";
+
+  auto ret = LEPUS_Eval(ctx_, src.c_str(), src.size(), "test.js",
+                        LEPUS_EVAL_TYPE_GLOBAL);
+  if (!ctx_->gc_enable) LEPUS_FreeValue(ctx_, ret);
+}
+
+TEST_F(CommonQjsTest, FindNameInfoNPE) {
+  std::string src = R"(
+    {
+      class Outer {
+        #a() {
+          return "Outer";
+        }
+        a() {
+          return this.#a();
+        }
+        test() {
+          return class {
+            static #a() {
+              return "Inner";
+            }
+            static a() {
+              return this.#a();
+            }
+            b = undefined();
+          };
+        }
+      }
+      const obj = new Outer();
+      const C = obj.test();
+      obj.a.call(new C());
+    }
+
+  )";
+  auto ret = LEPUS_Eval(ctx_, src.c_str(), src.size(), "test.js",
+                        LEPUS_EVAL_TYPE_GLOBAL);
+  if (!ctx_->gc_enable) LEPUS_FreeValue(ctx_, ret);
+}
 }  // namespace common_qjs_test

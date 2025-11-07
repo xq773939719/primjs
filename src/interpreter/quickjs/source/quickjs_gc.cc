@@ -4318,8 +4318,8 @@ static int call_setter(LEPUSContext *ctx, LEPUSObject *setter,
 }
 
 /* set the array length and remove the array elements if necessary. */
-int set_array_length_gc(LEPUSContext *ctx, LEPUSObject *p, JSProperty *prop,
-                        LEPUSValue val, int flags) {
+int set_array_length_gc(LEPUSContext *ctx, LEPUSObject *p, LEPUSValue val,
+                        int flags) {
   uint32_t len, idx, cur_len;
   int i, ret;
 
@@ -4330,11 +4330,12 @@ int set_array_length_gc(LEPUSContext *ctx, LEPUSObject *p, JSProperty *prop,
     if (len < old_len) {
       p->u.array.count = len;
     }
-    prop->u.value = JS_NewUint32(ctx, len);
+    p->prop[0].u.value = JS_NewUint32(ctx, len);
   } else {
     /* Note: length is always a uint32 because the object is an
        array */
-    JS_ToInt32_GC(ctx, reinterpret_cast<int32_t *>(&cur_len), prop->u.value);
+    JS_ToInt32_GC(ctx, reinterpret_cast<int32_t *>(&cur_len),
+                  p->prop[0].u.value);
     if (len < cur_len) {
       uint32_t d;
       JSShape *sh;
@@ -4617,7 +4618,7 @@ retry:
                (LEPUS_PROP_LENGTH | LEPUS_PROP_WRITABLE)) {
       assert(p->class_id == JS_CLASS_ARRAY);
       assert(prop == JS_ATOM_length);
-      return set_array_length_gc(ctx, p, pr, val, flags);
+      return set_array_length_gc(ctx, p, val, flags);
     } else if ((prs->flags & LEPUS_PROP_TMASK) == LEPUS_PROP_GETSET) {
       return call_setter(ctx, pr->u.getset.setter, this_obj, val, flags);
     } else if ((prs->flags & LEPUS_PROP_TMASK) == LEPUS_PROP_VARREF) {
@@ -5220,7 +5221,7 @@ redo_prop_update:
         }
         if (prs->flags & LEPUS_PROP_LENGTH) {
           if (flags & LEPUS_PROP_HAS_VALUE) {
-            res = set_array_length_gc(ctx, p, pr, val, flags);
+            res = set_array_length_gc(ctx, p, val, flags);
           } else {
             res = TRUE;
           }

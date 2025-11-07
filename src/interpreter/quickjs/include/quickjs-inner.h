@@ -1856,8 +1856,8 @@ QJS_HIDE int JS_SetPropertyInternalImpl_GC(LEPUSContext *ctx,
                                            JSAtom prop, LEPUSValue val,
                                            int flags);
 
-QJS_HIDE int set_array_length(LEPUSContext *ctx, LEPUSObject *p,
-                              JSProperty *prop, LEPUSValue val, int flags);
+QJS_HIDE int set_array_length(LEPUSContext *ctx, LEPUSObject *p, LEPUSValue val,
+                              int flags);
 
 QJS_HIDE BOOL JS_IsUncatchableError(LEPUSContext *ctx, LEPUSValueConst val);
 QJS_HIDE BOOL JS_IsUncatchableError_GC(LEPUSContext *ctx, LEPUSValueConst val);
@@ -1945,7 +1945,7 @@ LEPUSValue JS_GetSeparableStringContent_GC(LEPUSContext *ctx, LEPUSValue val);
 LEPUSValue JS_GetSeparableStringContentNotDup_GC(LEPUSContext *ctx,
                                                  LEPUSValue val);
 QJS_HIDE int set_array_length_gc(LEPUSContext *ctx, LEPUSObject *p,
-                                 JSProperty *prop, LEPUSValue val, int flags);
+                                 LEPUSValue val, int flags);
 bool gc_enabled();
 LEPUSRuntime *JS_NewRuntime_GC(uint32_t mode);
 LEPUSRuntime *JS_NewRuntime2_GC(const LEPUSMallocFunctions *mf, void *opaque,

@@ -6987,10 +6987,10 @@ LEPUSValue JS_ThrowTypeErrorNotFunction(LEPUSContext *ctx) {
       !js_is_bytecode_function(sf->cur_func)) {
     return LEPUS_ThrowTypeError(ctx, "not a function");
   }
+  b = LEPUS_VALUE_GET_OBJ(sf->cur_func)->u.func.function_bytecode;
   js_dbuf_init(ctx, &name);
   HandleScope func_scope{ctx, &name.buf, HANDLE_TYPE_HEAP_OBJ};
 
-  b = LEPUS_VALUE_GET_OBJ(sf->cur_func)->u.func.function_bytecode;
   find_name_info(b, sf->cur_pc - b->byte_code_buf, &name);
   ret = LEPUS_ThrowTypeError(ctx, "%s is not a function", name.buf);
   if (!ctx->gc_enable) dbuf_free(&name);
@@ -8353,8 +8353,8 @@ QJS_STATIC int call_setter(LEPUSContext *ctx, LEPUSObject *setter,
 }
 
 /* set the array length and remove the array elements if necessary. */
-int set_array_length(LEPUSContext *ctx, LEPUSObject *p, JSProperty *prop,
-                     LEPUSValue val, int flags) {
+int set_array_length(LEPUSContext *ctx, LEPUSObject *p, LEPUSValue val,
+                     int flags) {
   uint32_t len, idx, cur_len;
   int i, ret;
 
@@ -8368,11 +8368,11 @@ int set_array_length(LEPUSContext *ctx, LEPUSObject *p, JSProperty *prop,
       }
       p->u.array.count = len;
     }
-    prop->u.value = JS_NewUint32(ctx, len);
+    p->prop[0].u.value = JS_NewUint32(ctx, len);
   } else {
     /* Note: length is always a uint32 because the object is an
        array */
-    LEPUS_ToUint32(ctx, &cur_len, prop->u.value);
+    LEPUS_ToUint32(ctx, &cur_len, p->prop[0].u.value);
     if (len < cur_len) {
       uint32_t d;
       JSShape *sh;
@@ -8688,7 +8688,7 @@ retry:
                (LEPUS_PROP_LENGTH | LEPUS_PROP_WRITABLE)) {
       assert(p->class_id == JS_CLASS_ARRAY);
       assert(prop == JS_ATOM_length);
-      return set_array_length(ctx, p, pr, val, flags);
+      return set_array_length(ctx, p, val, flags);
     } else if ((prs->flags & LEPUS_PROP_TMASK) == LEPUS_PROP_GETSET) {
       return call_setter(ctx, pr->u.getset.setter, this_obj, val, flags);
     } else if ((prs->flags & LEPUS_PROP_TMASK) == LEPUS_PROP_VARREF) {
@@ -9331,7 +9331,7 @@ redo_prop_update:
         }
         if (prs->flags & LEPUS_PROP_LENGTH) {
           if (flags & LEPUS_PROP_HAS_VALUE) {
-            res = set_array_length(ctx, p, pr, LEPUS_DupValue(ctx, val), flags);
+            res = set_array_length(ctx, p, LEPUS_DupValue(ctx, val), flags);
           } else {
             res = TRUE;
           }
@@ -27673,16 +27673,19 @@ void find_name_info(const LEPUSFunctionBytecode *b, uint32_t pc, DynBuf *s) {
   for (uint32_t i = 0, size = b->debug.caller_size; i < size; ++i) {
     auto &slot = b->debug.caller_slots[i];
     if (slot.pc == pc) {
-      if (slot.is_str)
+      if (slot.is_str) {
         dbuf_putstr(s, slot.str);
-      else
+      } else if (b->debug.source) {
         dbuf_put(s,
                  reinterpret_cast<const uint8_t *>(b->debug.source + slot.off),
                  slot.size);
+      }
+      break;
     } else if (slot.pc > pc)
       break;
   }
-  dbuf_putc(s, '\0');
+  dbuf_putstr(s, "");
+  dbuf_putc(s, 0);
   return;
 }
 
@@ -43238,7 +43241,10 @@ QJS_STATIC LEPUSValue js_proxy_get(LEPUSContext *ctx, LEPUSValueConst obj,
   if (LEPUS_IsException(ret)) return LEPUS_EXCEPTION;
   res = JS_GetOwnPropertyInternal(ctx, &desc, LEPUS_VALUE_GET_OBJ(s->target),
                                   atom);
-  if (res < 0) return LEPUS_EXCEPTION;
+  if (res < 0) {
+    LEPUS_FreeValue(ctx, ret);
+    return LEPUS_EXCEPTION;
+  }
   if (res) {
     if ((desc.flags & (LEPUS_PROP_GETSET | LEPUS_PROP_CONFIGURABLE |
                        LEPUS_PROP_WRITABLE)) == 0) {

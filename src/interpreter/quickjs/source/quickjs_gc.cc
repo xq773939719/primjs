@@ -20154,9 +20154,20 @@ static int make_json_val(LEPUSContext *ctx, LEPUSValue obj,
       val->uni.i64 = num;
       return 0;
     }
-    case LEPUS_TAG_BIG_INT:
+    case LEPUS_TAG_BIG_INT: {
+// Special handling for INT64-bit data in lynx
+#if JS_LIMB_BITS == 64
+      auto *p = LEPUS_VALUE_GET_BIGINT(obj);
+      if (p->len == 1 || (p->len == 2 && p->tab[1] == 0)) {
+        LEPUSValue bignum_str = LEPUS_AtomToValue(
+            ctx, ctx->rt->class_array[JS_CLASS_BIG_INT].class_name);
+        return make_json_val(ctx, bignum_str, jsc, val_hdr, val, alc_len,
+                             str_arr, ts, cs);
+      }
+#endif
       LEPUS_ThrowTypeError(ctx, "bigint are forbidden in JSON.stringify");
       goto exception;
+    }
     case LEPUS_TAG_BOOL: {
       val_incr();
       if (JS_ToBool_GC(ctx, obj)) {

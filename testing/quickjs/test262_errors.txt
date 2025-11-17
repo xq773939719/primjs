@@ -182,6 +182,9 @@ test/built-ins/GeneratorFunction/proto-from-ctor-realm-prototype.js:31: TypeErro
 test/built-ins/GeneratorFunction/proto-from-ctor-realm.js:32: TypeError: $262.createRealm is not a function
 test/built-ins/JSON/stringify/replacer-array-proxy-revoked-realm.js:28: TypeError: $262.createRealm is not a function
 test/built-ins/JSON/stringify/value-bigint-cross-realm.js:10: TypeError: $262.createRealm is not a function
+test/built-ins/JSON/stringify/value-bigint-order.js:37: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
+test/built-ins/JSON/stringify/value-bigint-tojson-receiver.js:11: Test262Error: toString throws for BigInt object Expected a TypeError to be thrown but no exception was thrown at all
+test/built-ins/JSON/stringify/value-bigint.js:10: Test262Error: Expected a TypeError to be thrown but no exception was thrown at all
 test/built-ins/Map/proto-from-ctor-realm.js:23: TypeError: $262.createRealm is not a function
 test/built-ins/NativeErrors/AggregateError/cause-property.js:26: Test262Error: obj should have an own property cause
 test/built-ins/NativeErrors/AggregateError/proto-from-ctor-realm.js:32: TypeError: $262.createRealm is not a function

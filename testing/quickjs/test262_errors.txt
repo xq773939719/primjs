@@ -59,7 +59,6 @@ test/built-ins/Array/of/proto-from-ctor-realm.js:23: TypeError: $262.createRealm
 test/built-ins/Array/proto-from-ctor-realm-one.js:28: TypeError: $262.createRealm is not a function
 test/built-ins/Array/proto-from-ctor-realm-two.js:28: TypeError: $262.createRealm is not a function
 test/built-ins/Array/proto-from-ctor-realm-zero.js:26: TypeError: $262.createRealm is not a function
-test/built-ins/Array/prototype/Symbol.unscopables/array-find-from-last.js:19: Test262Error: `findLast` property value Expected SameValue(«undefined», «true») to be true
 test/built-ins/Array/prototype/at/index-argument-tointeger.js:17: Test262Error: The value of `typeof Array.prototype.at` is expected to be "function" Expected SameValue(«undefined», «function») to be true
 test/built-ins/Array/prototype/at/index-non-numeric-argument-tointeger-invalid.js:17: Test262Error: The value of `typeof Array.prototype.at` is expected to be "function" Expected SameValue(«undefined», «function») to be true
 test/built-ins/Array/prototype/at/index-non-numeric-argument-tointeger.js:17: Test262Error: The value of `typeof Array.prototype.at` is expected to be "function" Expected SameValue(«undefined», «function») to be true
@@ -173,11 +172,6 @@ test/built-ins/Function/prototype/apply/this-not-callable-realm.js:16: TypeError
 test/built-ins/Function/prototype/bind/get-fn-realm-recursive.js:40: TypeError: $262.createRealm is not a function
 test/built-ins/Function/prototype/bind/get-fn-realm.js:44: TypeError: $262.createRealm is not a function
 test/built-ins/Function/prototype/bind/proto-from-ctor-realm.js:21: TypeError: $262.createRealm is not a function
-test/built-ins/Function/prototype/restricted-property-caller.js:12: Test262Error: %FunctionPrototype%.caller getter/setter are both %ThrowTypeError% Expected SameValue(«function get caller() {
-    [native code]
-}», «function () {
-    [native code]
-}») to be true
 test/built-ins/GeneratorFunction/proto-from-ctor-realm-prototype.js:31: TypeError: $262.createRealm is not a function
 test/built-ins/GeneratorFunction/proto-from-ctor-realm.js:32: TypeError: $262.createRealm is not a function
 test/built-ins/JSON/stringify/replacer-array-proxy-revoked-realm.js:28: TypeError: $262.createRealm is not a function
@@ -634,11 +628,6 @@ test/built-ins/Symbol/toPrimitive/cross-realm.js:12: TypeError: $262.createRealm
 test/built-ins/Symbol/toStringTag/cross-realm.js:12: TypeError: $262.createRealm is not a function
 test/built-ins/Symbol/unscopables/cross-realm.js:12: TypeError: $262.createRealm is not a function
 test/built-ins/ThrowTypeError/distinct-cross-realm.js:15: TypeError: $262.createRealm is not a function
-test/built-ins/ThrowTypeError/unique-per-realm-function-proto.js:20: Test262Error: caller.get Expected SameValue(«function () {
-    [native code]
-}», «function get caller() {
-    [native code]
-}») to be true
 test/built-ins/TypedArray/prototype/at/index-argument-tointeger.js:16: Test262Error: The value of `typeof TypedArray.prototype.at` is "function" Expected SameValue(«undefined», «function») to be true
 test/built-ins/TypedArray/prototype/at/index-non-numeric-argument-tointeger-invalid.js:16: Test262Error: The value of `typeof TypedArray.prototype.at` is "function" Expected SameValue(«undefined», «function») to be true
 test/built-ins/TypedArray/prototype/at/index-non-numeric-argument-tointeger.js:16: Test262Error: The value of `typeof TypedArray.prototype.at` is "function" Expected SameValue(«undefined», «function») to be true

@@ -1910,7 +1910,6 @@ LEPUSContext *LEPUS_NewContext(LEPUSRuntime *rt) {
   LEPUS_AddIntrinsicPromise(ctx);
   JS_AddIntrinsicWeakRef(ctx);
   JS_AddIntrinsicFinalizationRegistry(ctx);
-  JS_AddIntrinsicBigInt(ctx);
 
   return ctx;
 }
@@ -2337,7 +2336,7 @@ int JS_InitAtoms(LEPUSRuntime *rt) {
   rt->atom_count = 0;
   rt->atom_size = 0;
   rt->atom_free_index = 0;
-  if (JS_ResizeAtomHash(rt, 256)) /* there are at least 195 predefined atoms */
+  if (JS_ResizeAtomHash(rt, 512)) /* there are at least 195 predefined atoms */
     return -1;
 
   p = js_atom_init;
@@ -2490,9 +2489,9 @@ JSAtom __JS_NewAtom(LEPUSRuntime *rt, JSString *str, int atom_type) {
 
     /* alloc new with size progression 3/2:
        4 6 9 13 19 28 42 63 94 141 211 316 474 711 1066 1599 2398 3597 5395 8092
-       preallocating space for predefined atoms (at least 195).
+       preallocating space for predefined atoms (at least 504).
      */
-    new_size = max_int(211, rt->atom_size * 3 / 2);
+    new_size = max_int(711, rt->atom_size * 3 / 2);
     if (new_size > JS_ATOM_MAX) goto fail;
     /* XXX: should use realloc2 to use slack space */
     new_array = static_cast<JSAtomStruct **>(
@@ -4149,33 +4148,38 @@ void js_shape_hash_unlink(LEPUSRuntime *rt, JSShape *sh) {
   rt->shape_hash_count--;
 }
 
-/* create a new empty shape with prototype 'proto' */
-QJS_STATIC no_inline JSShape *js_new_shape2(LEPUSContext *ctx,
-                                            LEPUSObject *proto, int hash_size,
-                                            int prop_size) {
+/* create a new empty shape with prototype 'proto'  It is not hashed */
+static JSShape *js_new_shape_nohash(LEPUSContext *ctx, LEPUSObject *proto,
+                                    int hash_size, int prop_size) {
   LEPUSRuntime *rt = ctx->rt;
   void *sh_alloc;
   JSShape *sh;
 
-  /* resize the shape hash table if necessary */
-  if (2 * (rt->shape_hash_count + 1) > rt->shape_hash_size) {
-    resize_shape_hash(rt, rt->shape_hash_bits + 1);
-  }
-
-  sh_alloc = lepus_malloc(ctx, get_shape_size(hash_size, prop_size),
-                          ALLOC_TAG_JSShape);
+  sh_alloc = lepus_mallocz(ctx, get_shape_size(hash_size, prop_size),
+                           ALLOC_TAG_JSShape);
   if (!sh_alloc) return NULL;
   sh = get_shape_from_alloc(sh_alloc, hash_size);
   sh->header.ref_count = 1;
-  sh->gc_header.mark = 0;
   if (proto) LEPUS_DupValue(ctx, LEPUS_MKPTR(LEPUS_TAG_OBJECT, proto));
   sh->proto = proto;
   memset(sh->prop_hash_end - hash_size, 0,
          sizeof(sh->prop_hash_end[0]) * hash_size);
   sh->prop_hash_mask = hash_size - 1;
-  sh->prop_count = 0;
   sh->prop_size = prop_size;
+  return sh;
+}
 
+static JSShape *js_new_shape2(LEPUSContext *ctx, LEPUSObject *proto,
+                              int32_t hash_size, int32_t prop_size) {
+  LEPUSRuntime *rt = ctx->rt;
+  JSShape *sh;
+  if (2 * (rt->shape_hash_count + 1) > rt->shape_hash_size) {
+    resize_shape_hash(rt, rt->shape_hash_bits + 1);
+  }
+
+  sh = js_new_shape_nohash(ctx, proto, hash_size, prop_size);
+
+  if (!sh) return nullptr;
   /* insert in the hash table */
   sh->hash = shape_initial_hash(proto);
   sh->is_hashed = TRUE;
@@ -4566,6 +4570,28 @@ static LEPUSValue JS_NewObjectProtoClass_RC(LEPUSContext *ctx,
   return JS_NewObjectFromShape(ctx, sh, class_id);
 }
 
+QJS_HIDE LEPUSValue JS_NewObjectProtoClassAlloc(LEPUSContext *ctx,
+                                                LEPUSValueConst proto_val,
+                                                LEPUSClassID class_id,
+                                                int32_t n_alloc_props) {
+  JSShape *sh;
+  LEPUSObject *proto;
+  int32_t hash_size, hash_bits;
+
+  if (n_alloc_props <= JS_PROP_INITIAL_SIZE) {
+    n_alloc_props = JS_PROP_INITIAL_SIZE;
+    hash_size = JS_PROP_INITIAL_HASH_SIZE;
+  } else {
+    hash_bits = 32 - clz32(n_alloc_props - 1);  // ceil(log2(radix))
+    hash_size = 1 << hash_bits;
+  }
+
+  proto = get_proto_obj(proto_val);
+  sh = js_new_shape_nohash(ctx, proto, hash_size, n_alloc_props);
+  if (!sh) return LEPUS_EXCEPTION;
+  return JS_NewObjectFromShape(ctx, sh, class_id);
+}
+
 LEPUSValue LEPUS_NewObjectProtoClass(LEPUSContext *ctx,
                                      LEPUSValueConst proto_val,
                                      LEPUSClassID class_id) {
@@ -4769,12 +4795,18 @@ int js_method_set_properties(LEPUSContext *ctx, LEPUSValueConst func_obj,
 QJS_STATIC LEPUSValue JS_NewCFunction3(LEPUSContext *ctx, LEPUSCFunction *func,
                                        const char *name, int length,
                                        LEPUSCFunctionEnum cproto, int magic,
-                                       LEPUSValueConst proto_val) {
+                                       LEPUSValueConst proto_val,
+                                       int32_t n_fileds = 0) {
   LEPUSValue func_obj;
   LEPUSObject *p;
   JSAtom name_atom;
 
-  func_obj = JS_NewObjectProtoClass_RC(ctx, proto_val, JS_CLASS_C_FUNCTION);
+  if (n_fileds > 0) {
+    func_obj = JS_NewObjectProtoClassAlloc(ctx, proto_val, JS_CLASS_C_FUNCTION,
+                                           n_fileds);
+  } else {
+    func_obj = JS_NewObjectProtoClass_RC(ctx, proto_val, JS_CLASS_C_FUNCTION);
+  }
   if (LEPUS_IsException(func_obj)) return func_obj;
   p = LEPUS_VALUE_GET_OBJ(func_obj);
   p->u.cfunc.c_function.generic = func;
@@ -9491,7 +9523,7 @@ QJS_STATIC int JS_DefineAutoInitProperty(
     LEPUSContext *ctx, LEPUSValueConst this_obj, JSAtom prop,
     LEPUSValue (*init_func)(LEPUSContext *ctx, LEPUSObject *obj, JSAtom prop,
                             void *opaque),
-    void *opaque, int flags) {
+    void *opaque, int flags, bool need_find_prop = true) {
   LEPUSObject *p;
   JSProperty *pr;
 
@@ -9499,7 +9531,7 @@ QJS_STATIC int JS_DefineAutoInitProperty(
 
   p = LEPUS_VALUE_GET_OBJ(this_obj);
 
-  if (find_own_property(&pr, p, prop)) {
+  if (need_find_prop && find_own_property(&pr, p, prop)) {
     /* property already exists */
     abort();
     return FALSE;
@@ -12498,22 +12530,12 @@ QJS_STATIC __exception int js_operator_delete(LEPUSContext *ctx,
   return 0;
 }
 
-QJS_STATIC LEPUSValue js_throw_type_error(LEPUSContext *ctx,
-                                          LEPUSValueConst this_val, int argc,
-                                          LEPUSValueConst *argv) {
-  return LEPUS_ThrowTypeError(ctx, "invalid property access");
-}
-
-/* XXX: not 100% compatible, but mozilla seems to use a similar
-   implementation to ensure that caller in non strict mode does not
-   throw (ES5 compatibility) */
-QJS_STATIC LEPUSValue js_function_proto_caller(LEPUSContext *ctx,
-                                               LEPUSValueConst this_val,
-                                               int argc,
-                                               LEPUSValueConst *argv) {
-  LEPUSFunctionBytecode *b = JS_GetFunctionBytecode(this_val);
-  if (!b || (b->js_mode & JS_MODE_STRICT) || !b->has_prototype) {
-    return js_throw_type_error(ctx, this_val, 0, NULL);
+QJS_HIDE LEPUSValue js_throw_type_error(LEPUSContext *ctx,
+                                        LEPUSValueConst this_val, int argc,
+                                        LEPUSValueConst *argv) {
+  auto *b = JS_GetFunctionBytecode(this_val);
+  if (!b || (b->js_mode & JS_MODE_STRICT) || !b->has_prototype || argc >= 1) {
+    return LEPUS_ThrowTypeError(ctx, "invalid property access");
   }
   return LEPUS_UNDEFINED;
 }
@@ -32306,13 +32328,24 @@ QJS_STATIC JSAtom find_atom(LEPUSContext *ctx, const char *name) {
   return atom;
 }
 
+static LEPUSValue JS_NewObjectProtoList(LEPUSContext *ctx,
+                                        LEPUSValueConst proto,
+                                        const LEPUSCFunctionListEntry *fields,
+                                        int32_t nfields) {
+  LEPUSValue obj;
+  obj = JS_NewObjectProtoClassAlloc(ctx, proto, JS_CLASS_OBJECT, nfields);
+  if (LEPUS_IsException(obj)) return obj;
+  LEPUS_SetPropertyFunctionList(ctx, obj, fields, nfields);
+  return obj;
+}
+
 QJS_STATIC LEPUSValue JS_InstantiateFunctionListItem2(LEPUSContext *ctx,
                                                       LEPUSObject *p,
                                                       JSAtom atom,
                                                       void *opaque) {
   const LEPUSCFunctionListEntry *e =
       static_cast<LEPUSCFunctionListEntry *>(opaque);
-  LEPUSValue val;
+  LEPUSValue val, proto;
 
   switch (e->def_type) {
     case LEPUS_DEF_CFUNC:
@@ -32324,9 +32357,13 @@ QJS_STATIC LEPUSValue JS_InstantiateFunctionListItem2(LEPUSContext *ctx,
       val = LEPUS_NewAtomString(ctx, e->u.str);
       break;
     case LEPUS_DEF_OBJECT:
-      val = LEPUS_NewObject(ctx);
-      LEPUS_SetPropertyFunctionList(ctx, val, e->u.prop_list.tab,
-                                    e->u.prop_list.len);
+      if (atom == JS_ATOM_Symbol_unscopables) {
+        proto = LEPUS_NULL;
+      } else {
+        proto = ctx->class_proto[JS_CLASS_OBJECT];
+      }
+      val = JS_NewObjectProtoList(ctx, proto, e->u.prop_list.tab,
+                                  e->u.prop_list.len);
       break;
     default:
       abort();
@@ -32334,9 +32371,10 @@ QJS_STATIC LEPUSValue JS_InstantiateFunctionListItem2(LEPUSContext *ctx,
   return val;
 }
 
-QJS_STATIC int JS_InstantiateFunctionListItem(
-    LEPUSContext *ctx, LEPUSValueConst obj, JSAtom atom,
-    const LEPUSCFunctionListEntry *e) {
+QJS_STATIC int JS_InstantiateFunctionListItem(LEPUSContext *ctx,
+                                              LEPUSValueConst obj, JSAtom atom,
+                                              const LEPUSCFunctionListEntry *e,
+                                              bool need_find_prop = true) {
   LEPUSValue val;
   int prop_flags = e->prop_flags;
 
@@ -32379,7 +32417,7 @@ QJS_STATIC int JS_InstantiateFunctionListItem(
         prop_flags = 0;
       }
       JS_DefineAutoInitProperty(ctx, obj, atom, JS_InstantiateFunctionListItem2,
-                                (void *)e, prop_flags);
+                                (void *)e, prop_flags, need_find_prop);
       return 0;
     case LEPUS_DEF_CGETSET:
     case LEPUS_DEF_CGETSET_MAGIC: {
@@ -32421,12 +32459,18 @@ QJS_STATIC int JS_InstantiateFunctionListItem(
       break;
     case LEPUS_DEF_PROP_STRING:
       JS_DefineAutoInitProperty(ctx, obj, atom, JS_InstantiateFunctionListItem2,
-                                (void *)e, prop_flags);
+                                (void *)e, prop_flags, need_find_prop);
       return 0;
     case LEPUS_DEF_OBJECT:
       JS_DefineAutoInitProperty(ctx, obj, atom, JS_InstantiateFunctionListItem2,
-                                (void *)e, prop_flags);
+                                (void *)e, prop_flags, need_find_prop);
       return 0;
+    case LEPUS_DEF_PROP_ATOM:
+      val = LEPUS_AtomToValue(ctx, e->u.i32);
+      break;
+    case LEPUS_DEF_PROP_BOOL:
+      val = LEPUS_NewBool(ctx, e->u.i32);
+      break;
     default:
       abort();
   }
@@ -32509,44 +32553,83 @@ QJS_STATIC void JS_SetConstructor2(LEPUSContext *ctx, LEPUSValueConst func_obj,
   set_cycle_flag(ctx, proto);
 }
 
-QJS_STATIC void JS_SetConstructor(LEPUSContext *ctx, LEPUSValueConst func_obj,
-                                  LEPUSValueConst proto) {
-  JS_SetConstructor2(ctx, func_obj, proto, 0,
-                     LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
+static void JS_SetFunctionListForConstructor(LEPUSContext *ctx,
+                                             LEPUSValueConst obj,
+                                             const LEPUSCFunctionListEntry *tab,
+                                             int len) {
+  int i, prop_flags;
+
+  for (i = 0; i < len; i++) {
+    const LEPUSCFunctionListEntry *e = &tab[i];
+    JSAtom atom = find_atom(ctx, e->name);
+    JS_InstantiateFunctionListItem(ctx, obj, atom, e, false);
+    LEPUS_FreeAtom(ctx, atom);
+  }
 }
 
-QJS_STATIC void JS_NewGlobalCConstructor2(LEPUSContext *ctx,
-                                          LEPUSValue func_obj, const char *name,
-                                          LEPUSValueConst proto) {
-  JS_DefinePropertyValueStr_RC(ctx, ctx->global_obj, name,
-                               LEPUS_DupValue(ctx, func_obj),
-                               LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
-  JS_SetConstructor(ctx, func_obj, proto);
-  LEPUS_FreeValue(ctx, func_obj);
-}
+QJS_STATIC LEPUSValue JS_NewCConstructor(
+    LEPUSContext *ctx, int32_t class_id, const char *name, LEPUSCFunction *func,
+    int32_t length, LEPUSCFunctionEnum cproto, int32_t magic,
+    LEPUSValueConst parent_ctor, const LEPUSCFunctionListEntry *ctor_fields,
+    int32_t n_ctor_fields, const LEPUSCFunctionListEntry *proto_fields,
+    int32_t n_proto_fields, int32_t flags) {
+  LEPUSValue ctor, proto, parent_proto;
+  int32_t proto_class_id, proto_flags, ctor_flags;
+  ctor = proto = parent_proto = LEPUS_UNDEFINED;
+  proto_flags = 0;
 
-QJS_STATIC LEPUSValueConst JS_NewGlobalCConstructor(LEPUSContext *ctx,
-                                                    const char *name,
-                                                    LEPUSCFunction *func,
-                                                    int length,
-                                                    LEPUSValueConst proto) {
-  LEPUSValue func_obj;
-  func_obj = LEPUS_NewCFunction2(ctx, func, name, length,
-                                 LEPUS_CFUNC_constructor_or_func, 0);
-  JS_NewGlobalCConstructor2(ctx, func_obj, name, proto);
-  return func_obj;
-}
+  if (flags & JS_NEW_CTOR_READONLY) {
+    ctor_flags = LEPUS_PROP_CONFIGURABLE;
+  } else {
+    ctor_flags = LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE;
+  }
 
-QJS_STATIC LEPUSValueConst JS_NewGlobalCConstructorOnly(LEPUSContext *ctx,
-                                                        const char *name,
-                                                        LEPUSCFunction *func,
-                                                        int length,
-                                                        LEPUSValueConst proto) {
-  LEPUSValue func_obj;
-  func_obj =
-      LEPUS_NewCFunction2(ctx, func, name, length, LEPUS_CFUNC_constructor, 0);
-  JS_NewGlobalCConstructor2(ctx, func_obj, name, proto);
-  return func_obj;
+  if (LEPUS_IsUndefined(parent_ctor)) {
+    parent_proto = LEPUS_DupValue(ctx, ctx->class_proto[JS_CLASS_OBJECT]);
+    parent_ctor = ctx->function_proto;
+  } else {
+    parent_proto = LEPUS_GetProperty(ctx, parent_ctor, JS_ATOM_prototype);
+    if (LEPUS_IsException(parent_proto)) return LEPUS_EXCEPTION;
+  }
+
+  if (flags & JS_NEW_CTOR_PROTO_EXIST) {
+    proto = LEPUS_DupValue(ctx, ctx->class_proto[class_id]);
+  } else {
+    if (flags & JS_NEW_CTOR_PROTO_CLASS) {
+      proto_class_id = class_id;
+    } else {
+      proto_class_id = JS_CLASS_OBJECT;
+    }
+    proto = JS_NewObjectProtoClassAlloc(ctx, parent_proto, proto_class_id,
+                                        n_proto_fields + 1);
+    if (LEPUS_IsException(proto)) goto fail;
+
+    if (class_id >= 0) ctx->class_proto[class_id] = LEPUS_DupValue(ctx, proto);
+  }
+  JS_SetFunctionListForConstructor(ctx, proto, proto_fields, n_proto_fields);
+
+  // addtional fields: name, length, prototype
+  ctor = JS_NewCFunction3(ctx, func, name, length, cproto, magic, parent_ctor,
+                          n_ctor_fields + 3);
+
+  if (LEPUS_IsException(ctor)) goto fail;
+  JS_SetFunctionListForConstructor(ctx, ctor, ctor_fields, n_ctor_fields);
+  if (!(flags & JS_NEW_CTOR_NO_GLOBAL)) {
+    if (LEPUS_DefinePropertyValueStr(
+            ctx, ctx->global_obj, name, LEPUS_DupValue(ctx, ctor),
+            LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE) < 0)
+      goto fail;
+  }
+  JS_SetConstructor2(ctx, ctor, proto, proto_flags, ctor_flags);
+
+  LEPUS_FreeValue(ctx, proto);
+  LEPUS_FreeValue(ctx, parent_proto);
+  return ctor;
+fail:
+  LEPUS_FreeValue(ctx, proto);
+  LEPUS_FreeValue(ctx, parent_proto);
+  LEPUS_FreeValue(ctx, ctor);
+  return LEPUS_EXCEPTION;
 }
 
 QJS_STATIC LEPUSValue js_global_eval(LEPUSContext *ctx,
@@ -33502,39 +33585,6 @@ fail:
   return LEPUS_EXCEPTION;
 }
 
-#if 0
-/* Note: corresponds to ECMA spec: CreateDataPropertyOrThrow() */
-static LEPUSValue js_object___setOwnProperty(LEPUSContext *ctx, LEPUSValueConst this_val,
-                                          int argc, LEPUSValueConst *argv)
-{
-    int ret;
-    ret = JS_DefinePropertyValueValue(ctx, argv[0], LEPUS_DupValue(ctx, argv[1]),
-                                      LEPUS_DupValue(ctx, argv[2]),
-                                      LEPUS_PROP_C_W_E | LEPUS_PROP_THROW);
-    if (ret < 0)
-        return LEPUS_EXCEPTION;
-    else
-        return LEPUS_NewBool(ctx, ret);
-}
-
-static LEPUSValue js_object___toObject(LEPUSContext *ctx, LEPUSValueConst this_val,
-                                    int argc, LEPUSValueConst *argv)
-{
-    return LEPUS_ToObject(ctx, argv[0]);
-}
-
-static LEPUSValue js_object___toPrimitive(LEPUSContext *ctx, LEPUSValueConst this_val,
-                                       int argc, LEPUSValueConst *argv)
-{
-    int hint = HINT_NONE;
-
-    if (LEPUS_VALUE_IS_INT(argv[1]))
-        hint = LEPUS_VALUE_GET_INT(argv[1]);
-
-    return JS_ToPrimitive(ctx, argv[0], hint);
-}
-#endif
-
 /* return an empty string if not an object */
 QJS_STATIC LEPUSValue js_object___getClass(LEPUSContext *ctx,
                                            LEPUSValueConst this_val, int argc,
@@ -33731,46 +33781,6 @@ int LEPUS_GetLength(LEPUSContext *ctx, LEPUSValue val) {
   return 0;
 }
 
-#if 0
-static LEPUSValue js_object___getObjectData(LEPUSContext *ctx, LEPUSValueConst this_val,
-                                         int argc, LEPUSValueConst *argv)
-{
-    return JS_GetObjectData(ctx, argv[0]);
-}
-
-static LEPUSValue js_object___setObjectData(LEPUSContext *ctx, LEPUSValueConst this_val,
-                                         int argc, LEPUSValueConst *argv)
-{
-    if (JS_SetObjectData(ctx, argv[0], LEPUS_DupValue(ctx, argv[1])))
-        return LEPUS_EXCEPTION;
-    return LEPUS_DupValue(ctx, argv[1]);
-}
-
-static LEPUSValue js_object___toPropertyKey(LEPUSContext *ctx, LEPUSValueConst this_val,
-                                         int argc, LEPUSValueConst *argv)
-{
-    return LEPUS_ToPropertyKey(ctx, argv[0]);
-}
-
-static LEPUSValue js_object___isObject(LEPUSContext *ctx, LEPUSValueConst this_val,
-                                    int argc, LEPUSValueConst *argv)
-{
-    return LEPUS_NewBool(ctx, LEPUS_IsObject(argv[0]));
-}
-
-static LEPUSValue js_object___isSameValueZero(LEPUSContext *ctx, LEPUSValueConst this_val,
-                                           int argc, LEPUSValueConst *argv)
-{
-    return LEPUS_NewBool(ctx, js_same_value_zero(ctx, argv[0], argv[1]));
-}
-
-static LEPUSValue js_object___isConstructor(LEPUSContext *ctx, LEPUSValueConst this_val,
-                                         int argc, LEPUSValueConst *argv)
-{
-    return LEPUS_NewBool(ctx, LEPUS_IsConstructor(ctx, argv[0]));
-}
-#endif
-
 QJS_STATIC LEPUSValue
 JS_SpeciesConstructor(LEPUSContext *ctx, LEPUSValueConst obj,
                       LEPUSValueConst defaultConstructor) {
@@ -33796,14 +33806,6 @@ JS_SpeciesConstructor(LEPUSContext *ctx, LEPUSValueConst obj,
   }
   return species;
 }
-
-#if 0
-static LEPUSValue js_object___speciesConstructor(LEPUSContext *ctx, LEPUSValueConst this_val,
-                                              int argc, LEPUSValueConst *argv)
-{
-    return JS_SpeciesConstructor(ctx, argv[0], argv[1]);
-}
-#endif
 
 QJS_STATIC LEPUSValue js_object_get___proto__(LEPUSContext *ctx,
                                               LEPUSValueConst this_val) {
@@ -36011,6 +36013,25 @@ static const LEPUSCFunctionListEntry js_iterator_proto_funcs[] = {
     LEPUS_CFUNC_DEF("[Symbol.iterator]", 0, js_iterator_proto_iterator),
 };
 
+static const LEPUSCFunctionListEntry js_array_unscopables_funcs[] = {
+    LEPUS_PROP_BOOL_DEF("at", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("copyWithin", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("entries", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("fill", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("find", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("findIndex", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("findLast", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("findLastIndex", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("flat", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("flatMap", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("includes", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("keys", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("toReversed", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("toSorted", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("toSpliced", TRUE, LEPUS_PROP_C_W_E),
+    LEPUS_PROP_BOOL_DEF("values", TRUE, LEPUS_PROP_C_W_E),
+};
+
 static const LEPUSCFunctionListEntry js_array_proto_funcs[] = {
     LEPUS_CFUNC_DEF("concat", 1, js_array_concat),
     LEPUS_CFUNC_MAGIC_DEF("every", 1, js_array_every, special_every),
@@ -36049,6 +36070,9 @@ static const LEPUSCFunctionListEntry js_array_proto_funcs[] = {
                           JS_ITERATOR_KIND_KEY),
     LEPUS_CFUNC_MAGIC_DEF("entries", 0, js_create_array_iterator,
                           JS_ITERATOR_KIND_KEY_AND_VALUE),
+    LEPUS_OBJECT_DEF("[Symbol.unscopables]", js_array_unscopables_funcs,
+                     countof(js_array_unscopables_funcs),
+                     LEPUS_PROP_CONFIGURABLE),
 };
 
 static const LEPUSCFunctionListEntry js_array_iterator_proto_funcs[] = {
@@ -39763,26 +39787,20 @@ void LEPUS_AddIntrinsicRegExp(LEPUSContext *ctx) {
 
   LEPUS_AddIntrinsicRegExpCompiler(ctx);
 
-  ctx->class_proto[JS_CLASS_REGEXP] = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_REGEXP],
-                                js_regexp_proto_funcs,
-                                countof(js_regexp_proto_funcs));
-  obj = JS_NewGlobalCConstructor(ctx, "RegExp", js_regexp_constructor, 2,
-                                 ctx->class_proto[JS_CLASS_REGEXP]);
-  ctx->regexp_ctor = LEPUS_DupValue(ctx, obj);
+  obj = JS_NewCConstructor(
+      ctx, JS_CLASS_REGEXP, "RegExp", js_regexp_constructor, 2,
+      LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED, js_regexp_funcs,
+      countof(js_regexp_funcs), js_regexp_proto_funcs,
+      countof(js_regexp_proto_funcs), 0);
+
+  ctx->regexp_ctor = obj;
 
 #if defined(__WASI_SDK__) || defined(QJS_UNITTEST)
   js_clear_regexp_caputre_property(ctx, obj, 0);
 #endif
 
-  LEPUS_SetPropertyFunctionList(ctx, obj, js_regexp_funcs,
-                                countof(js_regexp_funcs));
-
-  ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR] =
-      LEPUS_NewObjectProto(ctx, ctx->iterator_proto);
-  LEPUS_SetPropertyFunctionList(
-      ctx, ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR],
-      js_regexp_string_iterator_proto_funcs,
+  ctx->class_proto[JS_CLASS_REGEXP_STRING_ITERATOR] = JS_NewObjectProtoList(
+      ctx, ctx->iterator_proto, js_regexp_string_iterator_proto_funcs,
       countof(js_regexp_string_iterator_proto_funcs));
 }
 
@@ -43901,8 +43919,10 @@ void LEPUS_AddIntrinsicProxy(LEPUSContext *ctx) {
     rt->class_array[JS_CLASS_PROXY].call = js_proxy_call;
   }
 
-  obj1 = LEPUS_NewCFunction2(ctx, js_proxy_constructor, "Proxy", 2,
-                             LEPUS_CFUNC_constructor, 0);
+  /* additonal fields: name length */
+  obj1 = JS_NewCFunction3(ctx, js_proxy_constructor, "Proxy", 2,
+                          LEPUS_CFUNC_constructor, 0, ctx->function_proto,
+                          countof(js_proxy_funcs) + 2);
   LEPUS_SetConstructorBit(ctx, obj1, TRUE);
   LEPUS_SetPropertyFunctionList(ctx, obj1, js_proxy_funcs,
                                 countof(js_proxy_funcs));
@@ -44014,6 +44034,20 @@ QJS_STATIC LEPUSValue js_symbol_keyFor(LEPUSContext *ctx,
 static const LEPUSCFunctionListEntry js_symbol_funcs[] = {
     LEPUS_CFUNC_DEF("for", 1, js_symbol_for),
     LEPUS_CFUNC_DEF("keyFor", 1, js_symbol_keyFor),
+    LEPUS_PROP_ATOM_DEF("toPrimitive", JS_ATOM_Symbol_toPrimitive, 0),
+    LEPUS_PROP_ATOM_DEF("iterator", JS_ATOM_Symbol_iterator, 0),
+    LEPUS_PROP_ATOM_DEF("match", JS_ATOM_Symbol_match, 0),
+    LEPUS_PROP_ATOM_DEF("matchAll", JS_ATOM_Symbol_matchAll, 0),
+    LEPUS_PROP_ATOM_DEF("replace", JS_ATOM_Symbol_replace, 0),
+    LEPUS_PROP_ATOM_DEF("search", JS_ATOM_Symbol_search, 0),
+    LEPUS_PROP_ATOM_DEF("split", JS_ATOM_Symbol_split, 0),
+    LEPUS_PROP_ATOM_DEF("toStringTag", JS_ATOM_Symbol_toStringTag, 0),
+    LEPUS_PROP_ATOM_DEF("isConcatSpreadable", JS_ATOM_Symbol_isConcatSpreadable,
+                        0),
+    LEPUS_PROP_ATOM_DEF("hasInstance", JS_ATOM_Symbol_hasInstance, 0),
+    LEPUS_PROP_ATOM_DEF("species", JS_ATOM_Symbol_species, 0),
+    LEPUS_PROP_ATOM_DEF("unscopables", JS_ATOM_Symbol_unscopables, 0),
+    LEPUS_PROP_ATOM_DEF("asyncIterator", JS_ATOM_Symbol_asyncIterator, 0),
 };
 
 QJS_STATIC void delete_weak_ref(LEPUSRuntime *, LEPUSObject *, void *);
@@ -44880,29 +44914,23 @@ void LEPUS_AddIntrinsicMapSet(LEPUSContext *ctx) {
   int i;
   LEPUSValue obj1;
   char buf[ATOM_GET_STR_BUF_SIZE];
+  LEPUSCFunctionType ft;
+  ft.generic_magic = js_map_constructor;
 
   for (i = 0; i < 4; i++) {
     const char *name = JS_AtomGetStr(ctx, buf, sizeof(buf), JS_ATOM_Map + i);
-    ctx->class_proto[JS_CLASS_MAP + i] = LEPUS_NewObject(ctx);
-    LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_MAP + i],
-                                  js_map_proto_funcs_ptr[i],
-                                  js_map_proto_funcs_count[i]);
-    obj1 = LEPUS_NewCFunctionMagic(ctx, js_map_constructor, name, 0,
-                                   LEPUS_CFUNC_constructor_magic, i);
-    if (i < 2) {
-      LEPUS_SetPropertyFunctionList(ctx, obj1, js_map_funcs,
-                                    countof(js_map_funcs));
-    }
-    JS_NewGlobalCConstructor2(ctx, obj1, name,
-                              ctx->class_proto[JS_CLASS_MAP + i]);
+    obj1 = JS_NewCConstructor(ctx, JS_CLASS_MAP + i, name, ft.generic, 0,
+                              LEPUS_CFUNC_constructor_magic, i, LEPUS_UNDEFINED,
+                              js_map_funcs, i < 2 ? countof(js_map_funcs) : 0,
+                              js_map_proto_funcs_ptr[i],
+                              js_map_proto_funcs_count[i], 0);
+    LEPUS_FreeValue(ctx, obj1);
   }
 
   for (i = 0; i < 2; i++) {
-    ctx->class_proto[JS_CLASS_MAP_ITERATOR + i] =
-        LEPUS_NewObjectProto(ctx, ctx->iterator_proto);
-    LEPUS_SetPropertyFunctionList(
-        ctx, ctx->class_proto[JS_CLASS_MAP_ITERATOR + i],
-        js_map_proto_funcs_ptr[i + 4], js_map_proto_funcs_count[i + 4]);
+    ctx->class_proto[JS_CLASS_MAP_ITERATOR + i] = JS_NewObjectProtoList(
+        ctx, ctx->iterator_proto, js_map_proto_funcs_ptr[i + 4],
+        js_map_proto_funcs_count[i + 4]);
   }
 }
 
@@ -44945,6 +44973,9 @@ QJS_STATIC LEPUSValue js_weakref_constructor(LEPUSContext *ctx,
   if (argc < 1 || LEPUS_VALUE_IS_NOT_OBJECT(argv[0])) {
     return LEPUS_ThrowTypeError(ctx, "WeakRef: target must be an object");
   }
+  if (LEPUS_IsUndefined(new_target)) {
+    return LEPUS_ThrowTypeError(ctx, "constructor requires 'new'");
+  }
   LEPUSValue val;
   LEPUSValue target;
   WeakRefRecord *wr = nullptr;
@@ -44986,11 +45017,13 @@ QJS_STATIC void JS_AddIntrinsicWeakRef(LEPUSContext *ctx) {
                      countof(js_weak_ref_def));
   }
   // weakref
-  LEPUSValue proto = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, proto, js_weakref_proto_funcs, 2);
-  ctx->class_proto[JS_CLASS_WeakRef] = proto;
-  JS_NewGlobalCConstructorOnly(ctx, name, &js_weakref_constructor, 1, proto);
+  LEPUSValue obj = JS_NewCConstructor(
+      ctx, JS_CLASS_WeakRef, name, js_weakref_constructor, 1,
+      LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED, nullptr, 0,
+      js_weakref_proto_funcs, countof(js_weakref_proto_funcs), 0);
+
   LEPUS_FreeAtom(ctx, JS_ATOM_WeakRef);
+  LEPUS_FreeValue(ctx, obj);
 }
 
 LEPUSValue js_finalizationRegistry_register(LEPUSContext *ctx,
@@ -45093,7 +45126,8 @@ QJS_STATIC LEPUSValue js_finalizationRegistry_constructor(
     LEPUSValueConst *argv) {
   LEPUSValue executor;
   LEPUSValue val;
-
+  if (LEPUS_IsUndefined(new_target))
+    return LEPUS_ThrowTypeError(ctx, "constructor requires 'new'");
   executor = argv[0];
   if (check_function(ctx, executor))
     return LEPUS_ThrowTypeError(
@@ -45131,18 +45165,20 @@ void JS_AddIntrinsicFinalizationRegistry(LEPUSContext *ctx) {
       {JS_ATOM_FinalizationRegistry, js_finalizationRegistry_finalizer,
        js_finalizationRegistry_mark},
   };
+  LEPUSValue obj;
 
   if (!LEPUS_IsRegisteredClass(rt, JS_CLASS_FinalizationRegistry)) {
     init_class_range(rt, js_finalization_ref_def, JS_CLASS_FinalizationRegistry,
                      countof(js_finalization_ref_def));
   }
-  LEPUSValue proto = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, proto, js_finalizationRegistry_proto_funcs,
-                                countof(js_finalizationRegistry_proto_funcs));
-  ctx->class_proto[JS_CLASS_FinalizationRegistry] = proto;
-  JS_NewGlobalCConstructorOnly(ctx, name, js_finalizationRegistry_constructor,
-                               1, proto);
+  obj = JS_NewCConstructor(ctx, JS_CLASS_FinalizationRegistry, name,
+                           js_finalizationRegistry_constructor, 1,
+                           LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED,
+                           nullptr, 0, js_finalizationRegistry_proto_funcs,
+                           countof(js_finalizationRegistry_proto_funcs), 0);
   LEPUS_FreeAtom(ctx, JS_ATOM_FinalizationRegistry);
+  LEPUS_FreeValue(ctx, obj);
+  return;
 }
 
 /* Promise */
@@ -46563,70 +46599,55 @@ void LEPUS_AddIntrinsicPromise(LEPUSContext *ctx) {
   }
 
   /* Promise */
-  ctx->class_proto[JS_CLASS_PROMISE] = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_PROMISE],
-                                js_promise_proto_funcs,
-                                countof(js_promise_proto_funcs));
-  obj1 = LEPUS_NewCFunction2(ctx, js_promise_constructor, "Promise", 1,
-                             LEPUS_CFUNC_constructor, 0);
-  ctx->promise_ctor = LEPUS_DupValue(ctx, obj1);
-  LEPUS_SetPropertyFunctionList(ctx, obj1, js_promise_funcs,
-                                countof(js_promise_funcs));
-  JS_NewGlobalCConstructor2(ctx, obj1, "Promise",
-                            ctx->class_proto[JS_CLASS_PROMISE]);
+  obj1 = JS_NewCConstructor(ctx, JS_CLASS_PROMISE, "Promise",
+                            js_promise_constructor, 1, LEPUS_CFUNC_constructor,
+                            0, LEPUS_UNDEFINED, js_promise_funcs,
+                            countof(js_promise_funcs), js_promise_proto_funcs,
+                            countof(js_promise_proto_funcs), 0);
+  if (LEPUS_IsException(obj1)) return;
+  ctx->promise_ctor = obj1;
 
   /* AsyncFunction */
-  ctx->class_proto[JS_CLASS_ASYNC_FUNCTION] =
-      LEPUS_NewObjectProto(ctx, ctx->function_proto);
   LEPUSCFunctionType ft = {.generic_magic = js_function_constructor};
-  obj1 = JS_NewCFunction3(ctx, ft.generic, "AsyncFunction", 1,
-                          LEPUS_CFUNC_constructor_or_func_magic, JS_FUNC_ASYNC,
-                          ctx->function_ctor);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ASYNC_FUNCTION],
-                                js_async_function_proto_funcs,
-                                countof(js_async_function_proto_funcs));
-  JS_SetConstructor2(ctx, obj1, ctx->class_proto[JS_CLASS_ASYNC_FUNCTION], 0,
-                     LEPUS_PROP_CONFIGURABLE);
+  obj1 = JS_NewCConstructor(
+      ctx, JS_CLASS_ASYNC_FUNCTION, "AsyncFunction", ft.generic, 1,
+      LEPUS_CFUNC_constructor_or_func_magic, JS_FUNC_ASYNC, ctx->function_ctor,
+      nullptr, 0, js_async_function_proto_funcs,
+      countof(js_async_function_proto_funcs),
+      JS_NEW_CTOR_NO_GLOBAL | JS_NEW_CTOR_READONLY);
+
   LEPUS_FreeValue(ctx, obj1);
 
   /* AsyncIteratorPrototype */
-  ctx->async_iterator_proto = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->async_iterator_proto,
-                                js_async_iterator_proto_funcs,
-                                countof(js_async_iterator_proto_funcs));
+  ctx->async_iterator_proto = JS_NewObjectProtoList(
+      ctx, ctx->class_proto[JS_CLASS_OBJECT], js_async_iterator_proto_funcs,
+      countof(js_async_iterator_proto_funcs));
 
   /* AsyncFromSyncIteratorPrototype */
-  ctx->class_proto[JS_CLASS_ASYNC_FROM_SYNC_ITERATOR] =
-      LEPUS_NewObjectProto(ctx, ctx->async_iterator_proto);
-  LEPUS_SetPropertyFunctionList(
-      ctx, ctx->class_proto[JS_CLASS_ASYNC_FROM_SYNC_ITERATOR],
-      js_async_from_sync_iterator_proto_funcs,
+  ctx->class_proto[JS_CLASS_ASYNC_FROM_SYNC_ITERATOR] = JS_NewObjectProtoList(
+      ctx, ctx->async_iterator_proto, js_async_from_sync_iterator_proto_funcs,
       countof(js_async_from_sync_iterator_proto_funcs));
 
   /* AsyncGeneratorPrototype */
-  ctx->class_proto[JS_CLASS_ASYNC_GENERATOR] =
-      LEPUS_NewObjectProto(ctx, ctx->async_iterator_proto);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ASYNC_GENERATOR],
-                                js_async_generator_proto_funcs,
-                                countof(js_async_generator_proto_funcs));
+  ctx->class_proto[JS_CLASS_ASYNC_GENERATOR] = JS_NewObjectProtoList(
+      ctx, ctx->async_iterator_proto, js_async_generator_proto_funcs,
+      countof(js_async_generator_proto_funcs));
 
   /* AsyncGeneratorFunction */
-  ctx->class_proto[JS_CLASS_ASYNC_GENERATOR_FUNCTION] =
-      LEPUS_NewObjectProto(ctx, ctx->function_proto);
-  obj1 = JS_NewCFunction3(ctx, ft.generic, "AsyncGeneratorFunction", 1,
-                          LEPUS_CFUNC_constructor_or_func_magic,
-                          JS_FUNC_ASYNC_GENERATOR, ctx->function_ctor);
-  LEPUS_SetPropertyFunctionList(
-      ctx, ctx->class_proto[JS_CLASS_ASYNC_GENERATOR_FUNCTION],
-      js_async_generator_function_proto_funcs,
-      countof(js_async_generator_function_proto_funcs));
+  ft.generic_magic = js_function_constructor;
+  obj1 = JS_NewCConstructor(ctx, JS_CLASS_ASYNC_GENERATOR_FUNCTION,
+                            "AsyncGeneratorFunction", ft.generic, 1,
+                            LEPUS_CFUNC_constructor_or_func_magic,
+                            JS_FUNC_ASYNC_GENERATOR, ctx->function_ctor, NULL,
+                            0, js_async_generator_function_proto_funcs,
+                            countof(js_async_generator_function_proto_funcs),
+                            JS_NEW_CTOR_NO_GLOBAL | JS_NEW_CTOR_READONLY);
+  LEPUS_FreeValue(ctx, obj1);
+
   JS_SetConstructor2(ctx, ctx->class_proto[JS_CLASS_ASYNC_GENERATOR_FUNCTION],
                      ctx->class_proto[JS_CLASS_ASYNC_GENERATOR],
                      LEPUS_PROP_CONFIGURABLE, LEPUS_PROP_CONFIGURABLE);
-  JS_SetConstructor2(ctx, obj1,
-                     ctx->class_proto[JS_CLASS_ASYNC_GENERATOR_FUNCTION], 0,
-                     LEPUS_PROP_CONFIGURABLE);
-  LEPUS_FreeValue(ctx, obj1);
+  return;
 }
 
 /* URI handling */
@@ -46910,6 +46931,9 @@ static LEPUSCFunctionListEntry js_global_funcs[] = {
     LEPUS_PROP_DOUBLE_DEF("Infinity", 1.0 / 0.0, 0),
     LEPUS_PROP_DOUBLE_DEF("NaN", LEPUS_FLOAT64_NAN, 0),
     LEPUS_PROP_UNDEFINED_DEF("undefined", 0),
+    LEPUS_CFUNC_DEF("eval", 1, js_global_eval),
+    LEPUS_PROP_STRING_DEF("[Symbol.toStringTag]", "global",
+                          LEPUS_PROP_CONFIGURABLE),
 
     /* for the 'Date' implementation */
     LEPUS_CFUNC_DEF("__date_clock", 0, js___date_clock),
@@ -47721,14 +47745,13 @@ void LEPUS_AddIntrinsicDate(LEPUSContext *ctx) {
   LEPUSValueConst obj;
 
   /* Date */
-  ctx->class_proto[JS_CLASS_DATE] = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_DATE],
-                                js_date_proto_funcs,
-                                countof(js_date_proto_funcs));
-  obj = JS_NewGlobalCConstructor(ctx, "Date", js_date_constructor, 7,
-                                 ctx->class_proto[JS_CLASS_DATE]);
-  LEPUS_SetPropertyFunctionList(ctx, obj, js_date_funcs,
-                                countof(js_date_funcs));
+  obj =
+      JS_NewCConstructor(ctx, JS_CLASS_DATE, "Date", js_date_constructor, 7,
+                         LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED,
+                         js_date_funcs, countof(js_date_funcs),
+                         js_date_proto_funcs, countof(js_date_proto_funcs), 0);
+
+  LEPUS_FreeValue(ctx, obj);
 }
 
 /* eval */
@@ -47743,7 +47766,6 @@ void LEPUS_AddIntrinsicEval(LEPUSContext *ctx) {
 }
 
 /* BigInt */
-
 static LEPUSValue JS_ToBigIntCtorFree(LEPUSContext *ctx, LEPUSValue val) {
   int64_t tag;
 
@@ -47901,89 +47923,102 @@ static const LEPUSCFunctionListEntry js_bigint_proto_funcs[] = {
 
 QJS_STATIC void JS_AddIntrinsicBigInt(LEPUSContext *ctx) {
   LEPUSValueConst obj1;
-
-  ctx->class_proto[JS_CLASS_BIG_INT] = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_BIG_INT],
-                                js_bigint_proto_funcs,
-                                countof(js_bigint_proto_funcs));
-  obj1 = JS_NewGlobalCConstructor(ctx, "BigInt", js_bigint_constructor, 1,
-                                  ctx->class_proto[JS_CLASS_BIG_INT]);
-  LEPUS_SetPropertyFunctionList(ctx, obj1, js_bigint_funcs,
-                                countof(js_bigint_funcs));
+  obj1 = JS_NewCConstructor(
+      ctx, JS_CLASS_BIG_INT, "BigInt", js_bigint_constructor, 1,
+      LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED, js_bigint_funcs,
+      countof(js_bigint_funcs), js_bigint_proto_funcs,
+      countof(js_bigint_proto_funcs), 0);
+  LEPUS_FreeValue(ctx, obj1);
+  return;
 }
 
 /* Minimum amount of objects to be able to compile code and display
    error messages. No JSAtom should be allocated by this function. */
 QJS_STATIC void JS_AddIntrinsicBasicObjects(LEPUSContext *ctx) {
-  LEPUSValue proto;
+  LEPUSValue proto, obj;
+  LEPUSCFunctionType ft;
   int i;
 
-  ctx->class_proto[JS_CLASS_OBJECT] = LEPUS_NewObjectProto(ctx, LEPUS_NULL);
+  ctx->class_proto[JS_CLASS_OBJECT] = JS_NewObjectProtoClassAlloc(
+      ctx, LEPUS_NULL, JS_CLASS_OBJECT, countof(js_object_proto_funcs) + 1);
+
+  /* 3 properties: constructor, */
+  /* 2 more properties: caller and arguments */
   ctx->function_proto =
       JS_NewCFunction3(ctx, js_function_proto, "", 0, LEPUS_CFUNC_generic, 0,
-                       ctx->class_proto[JS_CLASS_OBJECT]);
+                       ctx->class_proto[JS_CLASS_OBJECT],
+                       countof(js_function_proto_funcs) + 3 + 2);
   ctx->class_proto[JS_CLASS_BYTECODE_FUNCTION] =
       LEPUS_DupValue(ctx, ctx->function_proto);
-  ctx->class_proto[JS_CLASS_ERROR] = LEPUS_NewObject(ctx);
-#if 0
-    /* these are auto-initialized from js_error_proto_funcs,
-       but delaying might be a problem */
-    JS_DefinePropertyValue_RC(ctx, ctx->class_proto[JS_CLASS_ERROR], JS_ATOM_name,
-                           LEPUS_AtomToString(ctx, JS_ATOM_Error),
-                           LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
-    JS_DefinePropertyValue_RC(ctx, ctx->class_proto[JS_CLASS_ERROR], JS_ATOM_message,
-                           LEPUS_AtomToString(ctx, JS_ATOM_empty_string),
-                           LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
-#endif
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ERROR],
-                                js_error_proto_funcs,
-                                countof(js_error_proto_funcs));
+  ctx->global_obj = JS_NewObjectProtoClassAlloc(
+      ctx, ctx->class_proto[JS_CLASS_OBJECT], JS_CLASS_OBJECT, 64);
+
+  ctx->global_var_obj =
+      JS_NewObjectProtoClassAlloc(ctx, LEPUS_NULL, JS_CLASS_OBJECT, 16);
+
+  /* Error */
+  ft.generic_magic = js_error_constructor;
+  obj = JS_NewCConstructor(ctx, JS_CLASS_ERROR, "Error", ft.generic, 1,
+                           LEPUS_CFUNC_constructor_or_func_magic, -1,
+                           LEPUS_UNDEFINED, nullptr, 0, js_error_proto_funcs,
+                           countof(js_error_proto_funcs), 0);
 
   for (i = 0; i < JS_NATIVE_ERROR_COUNT; i++) {
-    proto = LEPUS_NewObjectProto(ctx, ctx->class_proto[JS_CLASS_ERROR]);
-    JS_DefinePropertyValue_RC(ctx, proto, JS_ATOM_name,
-                              LEPUS_NewAtomString(ctx, native_error_name[i]),
-                              LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
-    JS_DefinePropertyValue_RC(ctx, proto, JS_ATOM_message,
-                              LEPUS_AtomToString(ctx, JS_ATOM_empty_string),
-                              LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
-    ctx->native_error_proto[i] = proto;
+    LEPUSValue func_obj;
+    const LEPUSCFunctionListEntry *funcs;
+    int n_args;
+    char buf[ATOM_GET_STR_BUF_SIZE];
+    const char *name = nullptr;
+    if (i != JS_AGGREGATE_ERROR) {
+      name = JS_AtomGetStr(ctx, buf, sizeof(buf), JS_ATOM_EvalError + i);
+      n_args = 1;
+    } else {
+      n_args = 2;
+      name = "AggregateError";
+    }
+    funcs = js_native_error_proto_funcs + 2 * i;
+
+    func_obj = JS_NewCConstructor(ctx, -1, name, ft.generic, n_args,
+                                  LEPUS_CFUNC_constructor_or_func_magic, i, obj,
+                                  NULL, 0, funcs, 2, 0);
+    ctx->native_error_proto[i] =
+        LEPUS_GetProperty(ctx, func_obj, JS_ATOM_prototype);
+    LEPUS_FreeValue(ctx, func_obj);
   }
 
+  LEPUS_FreeValue(ctx, obj);
+
+  /* Array */
   /* the array prototype is an array */
-  ctx->class_proto[JS_CLASS_ARRAY] = JS_NewObjectProtoClass_RC(
-      ctx, ctx->class_proto[JS_CLASS_OBJECT], JS_CLASS_ARRAY);
+  obj = JS_NewCConstructor(
+      ctx, JS_CLASS_ARRAY, "Array", js_array_constructor, 1,
+      LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED, js_array_funcs,
+      countof(js_array_funcs), js_array_proto_funcs,
+      countof(js_array_proto_funcs), JS_NEW_CTOR_PROTO_CLASS);
 
   ctx->array_shape =
       js_new_shape2(ctx, get_proto_obj(ctx->class_proto[JS_CLASS_ARRAY]),
                     JS_PROP_INITIAL_HASH_SIZE, 1);
   add_shape_property(ctx, &ctx->array_shape, NULL, JS_ATOM_length,
                      LEPUS_PROP_WRITABLE | LEPUS_PROP_LENGTH);
-
-  /* XXX: could test it on first context creation to ensure that no
-     new atoms are created in JS_AddIntrinsicBasicObjects(). It is
-     necessary to avoid useless renumbering of atoms after
-     LEPUS_EvalBinary() if it is done just after
-     JS_AddIntrinsicBasicObjects(). */
-  //    assert(ctx->rt->atom_count == JS_ATOM_END);
+  LEPUS_FreeValue(ctx, obj);
 }
 
 void LEPUS_AddIntrinsicBaseObjects(LEPUSContext *ctx) {
   CallGCFunc(JS_AddIntrinsicBaseObjects_GC, ctx);
   int i;
-  LEPUSValueConst obj, number_obj;
+  LEPUSValueConst number_obj;
   LEPUSValue obj1;
+  LEPUSCFunctionType ft;
 
   ctx->throw_type_error = LEPUS_NewCFunction(ctx, js_throw_type_error, NULL, 0);
 
   /* add caller and arguments properties to throw a TypeError */
-  obj1 = LEPUS_NewCFunction(ctx, js_function_proto_caller, "get caller", 0);
-  JS_DefineProperty_RC(ctx, ctx->function_proto, JS_ATOM_caller,
-                       LEPUS_UNDEFINED, obj1, ctx->throw_type_error,
-                       LEPUS_PROP_HAS_GET | LEPUS_PROP_HAS_SET |
-                           LEPUS_PROP_HAS_CONFIGURABLE |
-                           LEPUS_PROP_CONFIGURABLE);
-  LEPUS_FreeValue(ctx, obj1);
+  JS_DefineProperty_RC(
+      ctx, ctx->function_proto, JS_ATOM_caller, LEPUS_UNDEFINED,
+      ctx->throw_type_error, ctx->throw_type_error,
+      LEPUS_PROP_HAS_GET | LEPUS_PROP_HAS_SET | LEPUS_PROP_HAS_CONFIGURABLE |
+          LEPUS_PROP_CONFIGURABLE);
   JS_DefineProperty_RC(
       ctx, ctx->function_proto, JS_ATOM_arguments, LEPUS_UNDEFINED,
       ctx->throw_type_error, ctx->throw_type_error,
@@ -47993,104 +48028,36 @@ void LEPUS_AddIntrinsicBaseObjects(LEPUSContext *ctx) {
                   js_object_seal(ctx, LEPUS_UNDEFINED, 1,
                                  (LEPUSValueConst *)&ctx->throw_type_error, 1));
 
-  ctx->global_obj = LEPUS_NewObject(ctx);
-  ctx->global_var_obj = LEPUS_NewObjectProto(ctx, LEPUS_NULL);
-
   /* Object */
-  obj = JS_NewGlobalCConstructor(ctx, "Object", js_object_constructor, 1,
-                                 ctx->class_proto[JS_CLASS_OBJECT]);
-  LEPUS_SetPropertyFunctionList(ctx, obj, js_object_funcs,
-                                countof(js_object_funcs));
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_OBJECT],
-                                js_object_proto_funcs,
-                                countof(js_object_proto_funcs));
+  obj1 = JS_NewCConstructor(
+      ctx, JS_CLASS_OBJECT, "Object", js_object_constructor, 1,
+      LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED, js_object_funcs,
+      countof(js_object_funcs), js_object_proto_funcs,
+      countof(js_object_proto_funcs), JS_NEW_CTOR_PROTO_EXIST);
+  LEPUS_FreeValue(ctx, obj1);
 
   /* Function */
-  LEPUS_SetPropertyFunctionList(ctx, ctx->function_proto,
-                                js_function_proto_funcs,
-                                countof(js_function_proto_funcs));
-  ctx->function_ctor = LEPUS_NewCFunctionMagic(
-      ctx, js_function_constructor, "Function", 1,
-      LEPUS_CFUNC_constructor_or_func_magic, JS_FUNC_NORMAL);
-  JS_NewGlobalCConstructor2(ctx, LEPUS_DupValue(ctx, ctx->function_ctor),
-                            "Function", ctx->function_proto);
-
-  /* Error */
-  obj1 = LEPUS_NewCFunctionMagic(ctx, js_error_constructor, "Error", 1,
-                                 LEPUS_CFUNC_constructor_or_func_magic, -1);
-  JS_NewGlobalCConstructor2(ctx, obj1, "Error",
-                            ctx->class_proto[JS_CLASS_ERROR]);
-
-  LEPUSCFunctionType ft = {.generic_magic = js_error_constructor};
-  for (i = 0; i < JS_NATIVE_ERROR_COUNT; i++) {
-    int n_args = 1 + (i == JS_AGGREGATE_ERROR);
-    LEPUSValue func_obj =
-        JS_NewCFunction3(ctx, ft.generic, native_error_name[i], n_args,
-                         LEPUS_CFUNC_constructor_or_func_magic, i, obj1);
-    JS_NewGlobalCConstructor2(ctx, func_obj, native_error_name[i],
-                              ctx->native_error_proto[i]);
-  }
+  ft.generic_magic = js_function_constructor;
+  obj1 = JS_NewCConstructor(
+      ctx, JS_CLASS_BYTECODE_FUNCTION, "Function", ft.generic, 1,
+      LEPUS_CFUNC_constructor_or_func_magic, JS_FUNC_NORMAL, LEPUS_UNDEFINED,
+      NULL, 0, js_function_proto_funcs, countof(js_function_proto_funcs),
+      JS_NEW_CTOR_PROTO_EXIST);
+  ctx->function_ctor = obj1;
 
   /* Iterator prototype */
-  ctx->iterator_proto = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->iterator_proto,
-                                js_iterator_proto_funcs,
-                                countof(js_iterator_proto_funcs));
-
-  /* Array */
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ARRAY],
-                                js_array_proto_funcs,
-                                countof(js_array_proto_funcs));
-
-  obj = JS_NewGlobalCConstructor(ctx, "Array", js_array_constructor, 1,
-                                 ctx->class_proto[JS_CLASS_ARRAY]);
-  LEPUS_SetPropertyFunctionList(ctx, obj, js_array_funcs,
-                                countof(js_array_funcs));
-
-  /* XXX: create auto_initializer */
-  {
-    /* initialize Array.prototype[Symbol.unscopables] */
-    char const unscopables[] =
-        "copyWithin"
-        "\0"
-        "entries"
-        "\0"
-        "fill"
-        "\0"
-        "find"
-        "\0"
-        "findIndex"
-        "\0"
-        "flat"
-        "\0"
-        "flatMap"
-        "\0"
-        "includes"
-        "\0"
-        "keys"
-        "\0"
-        "values"
-        "\0";
-    const char *p = unscopables;
-    obj1 = LEPUS_NewObjectProto(ctx, LEPUS_NULL);
-    for (p = unscopables; *p; p += strlen(p) + 1) {
-      JS_DefinePropertyValueStr_RC(ctx, obj1, p, LEPUS_TRUE, LEPUS_PROP_C_W_E);
-    }
-    JS_DefinePropertyValue_RC(ctx, ctx->class_proto[JS_CLASS_ARRAY],
-                              JS_ATOM_Symbol_unscopables, obj1,
-                              LEPUS_PROP_CONFIGURABLE);
-  }
+  ctx->iterator_proto = JS_NewObjectProtoList(
+      ctx, ctx->class_proto[JS_CLASS_OBJECT], js_iterator_proto_funcs,
+      countof(js_iterator_proto_funcs));
 
   /* needed to initialize arguments[Symbol.iterator] */
   ctx->array_proto_values = JS_GetPropertyInternal_RC(
       ctx, ctx->class_proto[JS_CLASS_ARRAY], JS_ATOM_values,
       ctx->class_proto[JS_CLASS_ARRAY], 0);
 
-  ctx->class_proto[JS_CLASS_ARRAY_ITERATOR] =
-      LEPUS_NewObjectProto(ctx, ctx->iterator_proto);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ARRAY_ITERATOR],
-                                js_array_iterator_proto_funcs,
-                                countof(js_array_iterator_proto_funcs));
+  ctx->class_proto[JS_CLASS_ARRAY_ITERATOR] = JS_NewObjectProtoList(
+      ctx, ctx->iterator_proto, js_array_iterator_proto_funcs,
+      countof(js_array_iterator_proto_funcs));
   /* parseFloat and parseInteger must be defined before Number
        because of the Number.parseFloat and Number.parseInteger
        aliases */
@@ -48098,47 +48065,39 @@ void LEPUS_AddIntrinsicBaseObjects(LEPUSContext *ctx) {
                                 countof(js_global_funcs));
 
   /* Number */
-  ctx->class_proto[JS_CLASS_NUMBER] = JS_NewObjectProtoClass_RC(
-      ctx, ctx->class_proto[JS_CLASS_OBJECT], JS_CLASS_NUMBER);
+  obj1 = JS_NewCConstructor(
+      ctx, JS_CLASS_NUMBER, "Number", js_number_constructor, 1,
+      LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED, js_number_funcs,
+      countof(js_number_funcs), js_number_proto_funcs,
+      countof(js_number_proto_funcs), JS_NEW_CTOR_PROTO_CLASS);
+  LEPUS_FreeValue(ctx, obj1);
   JS_SetObjectData(ctx, ctx->class_proto[JS_CLASS_NUMBER],
                    LEPUS_NewInt32(ctx, 0));
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_NUMBER],
-                                js_number_proto_funcs,
-                                countof(js_number_proto_funcs));
-  number_obj = JS_NewGlobalCConstructor(ctx, "Number", js_number_constructor, 1,
-                                        ctx->class_proto[JS_CLASS_NUMBER]);
-  LEPUS_SetPropertyFunctionList(ctx, number_obj, js_number_funcs,
-                                countof(js_number_funcs));
 
   /* Boolean */
-  ctx->class_proto[JS_CLASS_BOOLEAN] = JS_NewObjectProtoClass_RC(
-      ctx, ctx->class_proto[JS_CLASS_OBJECT], JS_CLASS_BOOLEAN);
+  obj1 = JS_NewCConstructor(
+      ctx, JS_CLASS_BOOLEAN, "Boolean", js_boolean_constructor, 1,
+      LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED, nullptr, 0,
+      js_boolean_proto_funcs, countof(js_boolean_proto_funcs),
+      JS_NEW_CTOR_PROTO_CLASS);
+
   JS_SetObjectData(ctx, ctx->class_proto[JS_CLASS_BOOLEAN],
                    LEPUS_NewBool(ctx, FALSE));
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_BOOLEAN],
-                                js_boolean_proto_funcs,
-                                countof(js_boolean_proto_funcs));
-  JS_NewGlobalCConstructor(ctx, "Boolean", js_boolean_constructor, 1,
-                           ctx->class_proto[JS_CLASS_BOOLEAN]);
+  LEPUS_FreeValue(ctx, obj1);
 
   /* String */
-  ctx->class_proto[JS_CLASS_STRING] = JS_NewObjectProtoClass_RC(
-      ctx, ctx->class_proto[JS_CLASS_OBJECT], JS_CLASS_STRING);
+  obj1 = JS_NewCConstructor(
+      ctx, JS_CLASS_STRING, "String", js_string_constructor, 1,
+      LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED, js_string_funcs,
+      countof(js_string_funcs), js_string_proto_funcs,
+      countof(js_string_proto_funcs), JS_NEW_CTOR_PROTO_CLASS);
+  LEPUS_FreeValue(ctx, obj1);
   JS_SetObjectData(ctx, ctx->class_proto[JS_CLASS_STRING],
                    LEPUS_AtomToString(ctx, JS_ATOM_empty_string));
-  obj = JS_NewGlobalCConstructor(ctx, "String", js_string_constructor, 1,
-                                 ctx->class_proto[JS_CLASS_STRING]);
-  LEPUS_SetPropertyFunctionList(ctx, obj, js_string_funcs,
-                                countof(js_string_funcs));
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_STRING],
-                                js_string_proto_funcs,
-                                countof(js_string_proto_funcs));
 
-  ctx->class_proto[JS_CLASS_STRING_ITERATOR] =
-      LEPUS_NewObjectProto(ctx, ctx->iterator_proto);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_STRING_ITERATOR],
-                                js_string_iterator_proto_funcs,
-                                countof(js_string_iterator_proto_funcs));
+  ctx->class_proto[JS_CLASS_STRING_ITERATOR] = JS_NewObjectProtoList(
+      ctx, ctx->iterator_proto, js_string_iterator_proto_funcs,
+      countof(js_string_iterator_proto_funcs));
 
   /* Math: create as autoinit object */
   js_random_init(ctx);
@@ -48150,55 +48109,36 @@ void LEPUS_AddIntrinsicBaseObjects(LEPUSContext *ctx) {
                                 countof(js_reflect_obj));
 
   /* ES6 Symbol */
-  ctx->class_proto[JS_CLASS_SYMBOL] = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_SYMBOL],
-                                js_symbol_proto_funcs,
-                                countof(js_symbol_proto_funcs));
-  obj = JS_NewGlobalCConstructor(ctx, "Symbol", js_symbol_constructor, 0,
-                                 ctx->class_proto[JS_CLASS_SYMBOL]);
-  LEPUS_SetPropertyFunctionList(ctx, obj, js_symbol_funcs,
-                                countof(js_symbol_funcs));
-  for (i = JS_ATOM_Symbol_toPrimitive; i < JS_ATOM_END; i++) {
-    char buf[ATOM_GET_STR_BUF_SIZE];
-    const char *str, *p;
-    str = JS_AtomGetStr(ctx, buf, sizeof(buf), i);
-    /* skip "Symbol." */
-    p = strchr(str, '.');
-    if (p) str = p + 1;
-    JS_DefinePropertyValueStr_RC(ctx, obj, str, JS_AtomToValue_RC(ctx, i), 0);
-  }
-
+  obj1 = JS_NewCConstructor(
+      ctx, JS_CLASS_SYMBOL, "Symbol", js_symbol_constructor, 0,
+      LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED, js_symbol_funcs,
+      countof(js_symbol_funcs), js_symbol_proto_funcs,
+      countof(js_symbol_proto_funcs), 0);
+  LEPUS_FreeValue(ctx, obj1);
   /* ES6 Generator */
   ctx->class_proto[JS_CLASS_GENERATOR] =
-      LEPUS_NewObjectProto(ctx, ctx->iterator_proto);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_GENERATOR],
-                                js_generator_proto_funcs,
-                                countof(js_generator_proto_funcs));
+      JS_NewObjectProtoList(ctx, ctx->iterator_proto, js_generator_proto_funcs,
+                            countof(js_generator_proto_funcs));
 
-  ctx->class_proto[JS_CLASS_GENERATOR_FUNCTION] =
-      LEPUS_NewObjectProto(ctx, ctx->function_proto);
-  obj1 = LEPUS_NewCFunctionMagic(
-      ctx, js_function_constructor, "GeneratorFunction", 1,
-      LEPUS_CFUNC_constructor_or_func_magic, JS_FUNC_GENERATOR);
-  LEPUS_SetPropertyFunctionList(ctx,
-                                ctx->class_proto[JS_CLASS_GENERATOR_FUNCTION],
-                                js_generator_function_proto_funcs,
-                                countof(js_generator_function_proto_funcs));
+  ft.generic_magic = js_function_constructor;
+  obj1 = JS_NewCConstructor(
+      ctx, JS_CLASS_GENERATOR_FUNCTION, "GeneratorFunction", ft.generic, 1,
+      LEPUS_CFUNC_constructor_or_func_magic, JS_FUNC_GENERATOR,
+      ctx->function_ctor, nullptr, 0, js_generator_function_proto_funcs,
+      countof(js_generator_function_proto_funcs),
+      JS_NEW_CTOR_NO_GLOBAL | JS_NEW_CTOR_READONLY);
   JS_SetConstructor2(ctx, ctx->class_proto[JS_CLASS_GENERATOR_FUNCTION],
                      ctx->class_proto[JS_CLASS_GENERATOR],
                      LEPUS_PROP_CONFIGURABLE, LEPUS_PROP_CONFIGURABLE);
-  JS_SetConstructor2(ctx, obj1, ctx->class_proto[JS_CLASS_GENERATOR_FUNCTION],
-                     0, LEPUS_PROP_CONFIGURABLE);
   LEPUS_FreeValue(ctx, obj1);
 
   /* global properties */
-  ctx->eval_obj = LEPUS_NewCFunction(ctx, js_global_eval, "eval", 1);
-  JS_DefinePropertyValue_RC(ctx, ctx->global_obj, JS_ATOM_eval,
-                            LEPUS_DupValue(ctx, ctx->eval_obj),
-                            LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
+  ctx->eval_obj = LEPUS_GetProperty(ctx, ctx->global_obj, JS_ATOM_eval);
   JS_DefinePropertyValueStr_RC(ctx, ctx->global_obj, "globalThis",
                                LEPUS_DupValue(ctx, ctx->global_obj),
                                LEPUS_PROP_CONFIGURABLE | LEPUS_PROP_WRITABLE);
+  JS_AddIntrinsicBigInt(ctx);
+  return;
 }
 
 QJS_STATIC LEPUSValue js_array_buffer_constructor3(
@@ -49825,10 +49765,6 @@ static const LEPUSCFunctionListEntry js_typed_array_base_funcs[] = {
     LEPUS_CFUNC_DEF("from", 1, js_typed_array_from),
     LEPUS_CFUNC_DEF("of", 0, js_typed_array_of),
     LEPUS_CGETSET_DEF("[Symbol.species]", js_get_this, NULL),
-    // LEPUS_CFUNC_DEF("__getLength", 2, js_typed_array___getLength ),
-    // LEPUS_CFUNC_DEF("__create", 2, js_typed_array___create ),
-    // LEPUS_CFUNC_DEF("__speciesCreate", 2, js_typed_array___speciesCreate
-    // ),
 };
 
 static const LEPUSCFunctionListEntry js_typed_array_base_proto_funcs[] = {
@@ -50756,71 +50692,60 @@ void LEPUS_AddIntrinsicTypedArrays(LEPUSContext *ctx) {
   CallGCFunc(JS_AddIntrinsicTypedArrays_GC, ctx);
   LEPUSValue typed_array_base_proto, typed_array_base_func;
   LEPUSValueConst array_buffer_func, shared_array_buffer_func;
+  LEPUSValue obj;
   int i;
 
-  ctx->class_proto[JS_CLASS_ARRAY_BUFFER] = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_ARRAY_BUFFER],
-                                js_array_buffer_proto_funcs,
-                                countof(js_array_buffer_proto_funcs));
+  /* ArrayBuffer */
+  obj = JS_NewCConstructor(
+      ctx, JS_CLASS_ARRAY_BUFFER, "ArrayBuffer", js_array_buffer_constructor, 1,
+      LEPUS_CFUNC_constructor, 0, LEPUS_UNDEFINED, js_array_buffer_funcs,
+      countof(js_array_buffer_funcs), js_array_buffer_proto_funcs,
+      countof(js_array_buffer_proto_funcs), 0);
+  LEPUS_FreeValue(ctx, obj);
 
-  array_buffer_func = JS_NewGlobalCConstructorOnly(
-      ctx, "ArrayBuffer", js_array_buffer_constructor, 1,
-      ctx->class_proto[JS_CLASS_ARRAY_BUFFER]);
-  LEPUS_SetPropertyFunctionList(ctx, array_buffer_func, js_array_buffer_funcs,
-                                countof(js_array_buffer_funcs));
+  /* SharedArrayBuffer*/
+  obj = JS_NewCConstructor(
+      ctx, JS_CLASS_SHARED_ARRAY_BUFFER, "SharedArrayBuffer",
+      js_shared_array_buffer_constructor, 1, LEPUS_CFUNC_constructor, 0,
+      LEPUS_UNDEFINED, js_shared_array_buffer_funcs,
+      countof(js_shared_array_buffer_funcs), js_shared_array_buffer_proto_funcs,
+      countof(js_shared_array_buffer_proto_funcs), 0);
+  LEPUS_FreeValue(ctx, obj);
 
-  ctx->class_proto[JS_CLASS_SHARED_ARRAY_BUFFER] = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx,
-                                ctx->class_proto[JS_CLASS_SHARED_ARRAY_BUFFER],
-                                js_shared_array_buffer_proto_funcs,
-                                countof(js_shared_array_buffer_proto_funcs));
-
-  shared_array_buffer_func = JS_NewGlobalCConstructorOnly(
-      ctx, "SharedArrayBuffer", js_shared_array_buffer_constructor, 1,
-      ctx->class_proto[JS_CLASS_SHARED_ARRAY_BUFFER]);
-  LEPUS_SetPropertyFunctionList(ctx, shared_array_buffer_func,
-                                js_shared_array_buffer_funcs,
-                                countof(js_shared_array_buffer_funcs));
-
-  typed_array_base_proto = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, typed_array_base_proto,
-                                js_typed_array_base_proto_funcs,
-                                countof(js_typed_array_base_proto_funcs));
+  /* TypedArray */
+  typed_array_base_func = JS_NewCConstructor(
+      ctx, -1, "TypedArray", js_typed_array_base_constructor, 0,
+      LEPUS_CFUNC_constructor_or_func, 0, LEPUS_UNDEFINED,
+      js_typed_array_base_funcs, countof(js_typed_array_base_funcs),
+      js_typed_array_base_proto_funcs, countof(js_typed_array_base_proto_funcs),
+      JS_NEW_CTOR_NO_GLOBAL);
 
   /* TypedArray.prototype.toString must be the same object as
    * Array.prototype.toString */
-  LEPUSValue obj = JS_GetPropertyInternal_RC(
-      ctx, ctx->class_proto[JS_CLASS_ARRAY], JS_ATOM_toString,
-      ctx->class_proto[JS_CLASS_ARRAY], 0);
+  obj = JS_GetPropertyInternal_RC(ctx, ctx->class_proto[JS_CLASS_ARRAY],
+                                  JS_ATOM_toString,
+                                  ctx->class_proto[JS_CLASS_ARRAY], 0);
   /* XXX: should use alias method in LEPUSCFunctionListEntry */  //@@@
+  typed_array_base_proto =
+      LEPUS_GetProperty(ctx, typed_array_base_func, JS_ATOM_prototype);
   JS_DefinePropertyValue_RC(ctx, typed_array_base_proto, JS_ATOM_toString, obj,
                             LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE);
-
-  typed_array_base_func =
-      LEPUS_NewCFunction(ctx, js_typed_array_base_constructor, "TypedArray", 0);
-  LEPUS_SetPropertyFunctionList(ctx, typed_array_base_func,
-                                js_typed_array_base_funcs,
-                                countof(js_typed_array_base_funcs));
-  JS_SetConstructor(ctx, typed_array_base_func, typed_array_base_proto);
+  LEPUS_FreeValue(ctx, typed_array_base_proto);
 
   auto add_intrinsic_typed_arrays = [&](LEPUSClassID i, LEPUSAtom atom) {
     LEPUSValue func_obj;
     char buf[ATOM_GET_STR_BUF_SIZE];
     const char *name;
+    const LEPUSCFunctionListEntry *bpe;
     LEPUSCFunctionType ft2 = {.generic_magic = js_typed_array_constructor};
-
-    ctx->class_proto[i] = LEPUS_NewObjectProto(ctx, typed_array_base_proto);
-    JS_DefinePropertyValueStr_RC(
-        ctx, ctx->class_proto[i], "BYTES_PER_ELEMENT",
-        LEPUS_NewInt32(ctx, 1 << typed_array_size_log2(i)), 0);
     name = JS_AtomGetStr(ctx, buf, sizeof(buf), atom);
-    func_obj = JS_NewCFunction3(ctx, ft2.generic, name, 3,
-                                LEPUS_CFUNC_constructor_magic, i,
-                                typed_array_base_func);
-    JS_NewGlobalCConstructor2(ctx, func_obj, name, ctx->class_proto[i]);
-    JS_DefinePropertyValueStr_RC(
-        ctx, func_obj, "BYTES_PER_ELEMENT",
-        LEPUS_NewInt32(ctx, 1 << typed_array_size_log2(i)), 0);
+
+    bpe = js_typed_array_funcs + typed_array_size_log2(i);
+
+    func_obj = JS_NewCConstructor(ctx, i, name, ft2.generic, 3,
+                                  LEPUS_CFUNC_constructor_magic, i,
+                                  typed_array_base_func, bpe, 1, bpe, 1, 0);
+    LEPUS_FreeValue(ctx, func_obj);
   };
 
   for (i = JS_CLASS_UINT8C_ARRAY;
@@ -50833,20 +50758,17 @@ void LEPUS_AddIntrinsicTypedArrays(LEPUSContext *ctx) {
   LEPUSAtom bigint64array_atom =
       ctx->rt->class_array[JS_CLASS_BIG_INT64_ARRAY].class_name;
   for (i = JS_CLASS_BIG_INT64_ARRAY; i <= JS_CLASS_BIG_UINT64_ARRAY; ++i) {
-    LEPUSValue func_obj;
     add_intrinsic_typed_arrays(
         i, bigint64array_atom + (i - JS_CLASS_BIG_INT64_ARRAY));
   }
-  LEPUS_FreeValue(ctx, typed_array_base_proto);
   LEPUS_FreeValue(ctx, typed_array_base_func);
 
   /* DataView */
-  ctx->class_proto[JS_CLASS_DATAVIEW] = LEPUS_NewObject(ctx);
-  LEPUS_SetPropertyFunctionList(ctx, ctx->class_proto[JS_CLASS_DATAVIEW],
-                                js_dataview_proto_funcs,
-                                countof(js_dataview_proto_funcs));
-  JS_NewGlobalCConstructorOnly(ctx, "DataView", js_dataview_constructor, 1,
-                               ctx->class_proto[JS_CLASS_DATAVIEW]);
+  obj = JS_NewCConstructor(
+      ctx, JS_CLASS_DATAVIEW, "DataView", js_dataview_constructor, 1,
+      LEPUS_CFUNC_constructor, 0, LEPUS_UNDEFINED, nullptr, 0,
+      js_dataview_proto_funcs, countof(js_dataview_proto_funcs), 0);
+  LEPUS_FreeValue(ctx, obj);
   /* Atomics */
 #ifdef CONFIG_ATOMICS
   JS_AddIntrinsicAtomics(ctx);

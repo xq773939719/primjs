@@ -2406,7 +2406,7 @@ QJS_HIDE int JS_DefineAutoInitProperty_GC(
     LEPUSContext *ctx, LEPUSValueConst this_obj, JSAtom prop,
     LEPUSValue (*init_func)(LEPUSContext *ctx, LEPUSObject *obj, JSAtom prop,
                             void *opaque),
-    void *opaque, int flags);
+    void *opaque, int flags, bool need_find_prop = true);
 QJS_HIDE int js_link_module(LEPUSContext *ctx, LEPUSModuleDef *m);
 QJS_HIDE int skip_spaces(const char *pc);
 int JS_DefineObjectName_GC(LEPUSContext *ctx, LEPUSValueConst obj, JSAtom name,
@@ -3199,6 +3199,14 @@ inline uintptr_t get_thread_stack_limit2() {
 uint32_t map_hash_key(LEPUSContext *ctx, LEPUSValueConst key,
                       uint32_t hash_bits);
 
+#define JS_NEW_CTOR_NO_GLOBAL (1 << 0) /* don't create a global binding */
+#define JS_NEW_CTOR_PROTO_CLASS \
+  (1 << 1) /* the prototype class is 'class_id' instead of JS_CLASS_OBJECT */
+#define JS_NEW_CTOR_PROTO_EXIST                                           \
+  (1 << 2)                            /* the prototype is already defined \
+                                       */
+#define JS_NEW_CTOR_READONLY (1 << 3) /* read-only constructor field */
+
 #ifdef ENABLE_VIRTUAL_STACK
 
 class VirtualStack {
@@ -3238,4 +3246,31 @@ class VirtualStack {
 };
 
 #endif
+QJS_HIDE LEPUSValue js_throw_type_error(LEPUSContext *ctx,
+                                        LEPUSValueConst this_val, int argc,
+                                        LEPUSValueConst *argv);
+inline const LEPUSCFunctionListEntry js_typed_array_funcs[] = {
+    LEPUS_PROP_INT32_DEF("BYTES_PER_ELEMENT", 1, 0),
+    LEPUS_PROP_INT32_DEF("BYTES_PER_ELEMENT", 2, 0),
+    LEPUS_PROP_INT32_DEF("BYTES_PER_ELEMENT", 4, 0),
+    LEPUS_PROP_INT32_DEF("BYTES_PER_ELEMENT", 8, 0),
+};
+
+inline const LEPUSCFunctionListEntry js_native_error_proto_funcs[] = {
+#define DEF(name)                                                     \
+  LEPUS_PROP_ATOM_DEF("name", name,                                   \
+                      LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE), \
+      LEPUS_PROP_STRING_DEF("message", "",                            \
+                            LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE),
+
+    DEF(JS_ATOM_EvalError) DEF(JS_ATOM_RangeError) DEF(JS_ATOM_ReferenceError)
+        DEF(JS_ATOM_SyntaxError) DEF(JS_ATOM_TypeError) DEF(JS_ATOM_URIError)
+            DEF(JS_ATOM_InternalError) LEPUS_PROP_STRING_DEF(
+                "name", "AggregateError",
+                LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE),
+    LEPUS_PROP_STRING_DEF("message", "",
+                          LEPUS_PROP_WRITABLE | LEPUS_PROP_CONFIGURABLE),
+#undef DEF
+};
+
 #endif  // SRC_INTERPRETER_QUICKJS_INCLUDE_QUICKJS_INNER_H_

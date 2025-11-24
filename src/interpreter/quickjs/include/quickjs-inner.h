@@ -3184,7 +3184,6 @@ inline double js_pow(double a, double b) {
   }
 }
 
-int js_unary_arith_slow(LEPUSContext *ctx, LEPUSValue *sp, OPCodeEnum op);
 JSAtom __JS_NewAtomInit_NOGC(LEPUSRuntime *rt, const char *str, int len,
                              int atom_type, int is_const);
 JSAtom __JS_NewAtomInit(LEPUSRuntime *rt, const char *str, int len,

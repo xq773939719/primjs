@@ -20168,6 +20168,7 @@ static int make_json_val(LEPUSContext *ctx, LEPUSValue obj,
       if (p->len == 1 || (p->len == 2 && p->tab[1] == 0)) {
         LEPUSValue bignum_str = LEPUS_AtomToValue(
             ctx, ctx->rt->class_array[JS_CLASS_BIG_INT].class_name);
+        func_scope.PushHandle(&bignum_str, HANDLE_TYPE_LEPUS_VALUE);
         return make_json_val(ctx, bignum_str, jsc, val_hdr, val, alc_len,
                              str_arr, ts, cs);
       }
@@ -24767,6 +24768,7 @@ static LEPUSValue js_bigint_asUintN(LEPUSContext *ctx, LEPUSValueConst this_val,
                                     int asIntN) {
   uint64_t bits;
   LEPUSValue res, a;
+  res = a = LEPUS_UNDEFINED;
 
   if (LEPUS_ToIndex(ctx, &bits, argv[0])) return LEPUS_EXCEPTION;
   HandleScope func_scope(ctx, &res, HANDLE_TYPE_LEPUS_VALUE);
@@ -27726,7 +27728,6 @@ LEPUSValue prim_js_unary_arith_slow_gc(LEPUSContext *ctx, LEPUSValue op1,
         default:
           abort();
       }
-      LEPUS_FreeValue(ctx, op1);
       if (!r) goto exception;
       return JS_CompactBigInt(ctx, r);
     } break;
@@ -29976,11 +29977,6 @@ void Finalizer::JSLepusRefFinalizer(void *ptr) noexcept {
   }
 }
 #endif
-
-void Finalizer::JSBigIntFinalizer(void *ptr) noexcept {
-  JSBigInt *p = static_cast<JSBigInt *>(ptr);
-  lepus_free_rt(rt_, p);
-}
 
 void Finalizer::JSStringFinalizer(void *ptr) noexcept {
   JSString *str = static_cast<JSString *>(ptr);

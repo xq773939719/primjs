@@ -53,9 +53,6 @@ void Finalizer::DoFinalizer(void *ptr) noexcept {
       JSLepusRefFinalizer(ptr);
       break;
 #endif
-    case ALLOC_TAG_JSBigInt:
-      JSBigIntFinalizer(ptr);
-      break;
     case ALLOC_TAG_JSString:
       JSStringFinalizer(ptr);
       break;

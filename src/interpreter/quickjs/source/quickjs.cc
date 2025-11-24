@@ -11232,6 +11232,7 @@ LEPUSValue JS_StringToBigInt(LEPUSContext *ctx, LEPUSValue val) {
   int flags;
 
   str = LEPUS_ToCStringLen2(ctx, &len, val, 0);
+  HandleScope func_scope(ctx, &str, HANDLE_TYPE_CSTRING);
   if (!ctx->gc_enable) LEPUS_FreeValue(ctx, val);
   if (!str) return LEPUS_EXCEPTION;
   p = str;

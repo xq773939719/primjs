@@ -258,7 +258,6 @@ class Finalizer {
 #ifdef ENABLE_LEPUSNG
   void JSLepusRefFinalizer(void *ptr) noexcept;
 #endif
-  void JSBigIntFinalizer(void *ptr) noexcept;
   void JSObjectFinalizer(void *ptr) noexcept;
   void JSObjectOnlyFinalizer(void *ptr) noexcept;
   void JSStringFinalizer(void *ptr) noexcept;

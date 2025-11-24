@@ -2,6 +2,8 @@
 
 #include <assert.h>
 
+#include "gc/trace-gc.h"
+
 js_limb_t mp_add(js_limb_t *res, const js_limb_t *op1, const js_limb_t *op2,
                  js_limb_t n, js_limb_t carry) {
   int i;
@@ -1184,8 +1186,9 @@ LEPUSValue js_atof(LEPUSContext *ctx, const char *str, const char **pp,
   char buf1[64], *buf;
   int i, j, len;
   BOOL buf_allocated = FALSE;
-  LEPUSValue val;
+  LEPUSValue val = LEPUS_UNDEFINED;
   JSATODTempMem atod_mem;
+  HandleScope func_scope(ctx, &val, HANDLE_TYPE_LEPUS_VALUE);
 
   /* optional separator between digits */
   sep = (flags & ATOD_ACCEPT_UNDERSCORES) ? '_' : 256;
@@ -1284,6 +1287,7 @@ LEPUSValue js_atof(LEPUSContext *ctx, const char *str, const char **pp,
     buf =
         (char *)lepus_malloc_rt(ctx->rt, len + 2, 0); /* no exception raised */
     if (!buf) goto mem_error;
+    func_scope.PushHandle(buf, HANDLE_TYPE_DIR_HEAP_OBJ);
     buf_allocated = TRUE;
   }
   /* remove the separators and the radix prefixes */
@@ -1363,6 +1367,7 @@ int js_compare_bigint(LEPUSContext *ctx, OPCodeEnum op, LEPUSValue op1,
   int64_t tag1, tag2;
   JSBigIntBuf buf1, buf2;
   JSBigInt *p1, *p2;
+  HandleScope func_scope(ctx);
 
   tag1 = LEPUS_VALUE_GET_NORM_TAG(op1);
   tag2 = LEPUS_VALUE_GET_NORM_TAG(op2);
@@ -1391,6 +1396,7 @@ int js_compare_bigint(LEPUSContext *ctx, OPCodeEnum op, LEPUSValue op1,
       }
     } else {
       p1 = JS_ToBigIntBuf(ctx, &buf1, op1);
+      func_scope.PushHandle(p1, HANDLE_TYPE_DIR_HEAP_OBJ);
       p2 = JS_ToBigIntBuf(ctx, &buf2, op2);
       val = js_bigint_cmp(ctx, p1, p2);
     }
@@ -1429,6 +1435,7 @@ LEPUSValue js_bigint_to_string1(LEPUSContext *ctx, LEPUSValueConst val,
   int is_neg, n_bits, log2_radix, n_digits;
   BOOL is_binary_radix;
   LEPUSValue res;
+  HandleScope func_scope(ctx);
 
   assert(LEPUS_VALUE_GET_TAG(val) == LEPUS_TAG_BIG_INT);
   r = LEPUS_VALUE_GET_BIGINT(val);
@@ -1449,6 +1456,7 @@ LEPUSValue js_bigint_to_string1(LEPUSContext *ctx, LEPUSValueConst val,
     memcpy(tmp->tab, r->tab, r->len * sizeof(r->tab[0]));
     r = tmp;
   }
+  func_scope.PushHandle(tmp, HANDLE_TYPE_DIR_HEAP_OBJ);
   log2_radix = 31 - clz32(radix); /* floor(log2(radix)) */
   n_bits = r->len * JS_LIMB_BITS - js_limb_safe_clz(r->tab[r->len - 1]);
   /* n_digits is exact only if radix is a power of
@@ -1460,6 +1468,7 @@ LEPUSValue js_bigint_to_string1(LEPUSContext *ctx, LEPUSValueConst val,
     lepus_free(ctx, tmp);
     return LEPUS_EXCEPTION;
   }
+  func_scope.PushHandle(buf, HANDLE_TYPE_DIR_HEAP_OBJ);
   q = buf + n_digits + is_neg + 1;
   *--q = '\0';
   buf_end = q;
@@ -1513,11 +1522,13 @@ LEPUSValue js_dtoa2(LEPUSContext *ctx, double d, int32_t radix,
   LEPUSValue res;
   JSDTOATempMem dtoa_mem;
   len_max = js_dtoa_max_len(d, radix, n_digits, flags);
+  HandleScope func_scope(ctx);
 
   /* longer buffer may be used if radix != 10 */
   if (len_max > sizeof(static_buf) - 1) {
     tmp_buf = (char *)lepus_malloc(ctx, len_max + 1, 0);
     if (!tmp_buf) return LEPUS_EXCEPTION;
+    func_scope.PushHandle(tmp_buf, HANDLE_TYPE_DIR_HEAP_OBJ);
     buf = tmp_buf;
   } else {
     tmp_buf = nullptr;

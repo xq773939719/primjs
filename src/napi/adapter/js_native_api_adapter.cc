@@ -11,10 +11,12 @@
 
 #include "js_native_api_adapter.h"
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 
 #include "js_native_api_types.h"
 #include "napi_runtime.h"
@@ -481,12 +483,6 @@ napi_status napi_create_typedarray_primjs(napi_env env,
                                      byte_offset, result);
 }
 
-napi_status napi_is_typedarray_of_primjs(napi_env env, napi_value typedarray,
-                                         napi_typedarray_type type,
-                                         bool* result) {
-  return env->napi_is_typedarray_of(env, typedarray, type, result);
-}
-
 napi_status napi_get_typedarray_info_primjs(napi_env env, napi_value typedarray,
                                             napi_typedarray_type* type,
                                             size_t* length, void** data,
@@ -604,6 +600,28 @@ napi_status napi_cancel_async_work_primjs(napi_env env, napi_async_work work) {
   return env->napi_cancel_async_work(env, work);
 }
 
+void napi_fatal_error_primjs(const char* location, size_t location_len,
+                             const char* message, size_t message_len) {
+  if (location && location_len > 0) {
+    int print_len =
+        (location_len > INT_MAX) ? INT_MAX : static_cast<int>(location_len);
+    std::fprintf(stderr, "Fatal error location: %.*s\n", print_len, location);
+  }
+
+  if (message && message_len > 0) {
+    int message_print_len =
+        (message_len > INT_MAX) ? INT_MAX : static_cast<int>(message_len);
+    std::fprintf(stderr, "Fatal error message: %.*s\n", message_print_len,
+                 message);
+  }
+
+  std::abort();
+}
+
+void napi_module_register_primjs(napi_module* mod) {
+  napi_module_register_xx(mod);
+}
+
 class ThreadSafeFunctionAdaptor {
  public:
   ThreadSafeFunctionAdaptor(
@@ -679,62 +697,26 @@ napi_status napi_get_threadsafe_function_context_primjs(
   return napi_runtime_get_threadsafe_function_context(func, result);
 }
 
-napi_status napi_remove_async_cleanup_hook_primjs(void* remove_handle) {
-  return napi_generic_failure;
-}
+// Not implemented apis
 
-napi_status napi_get_loader_primjs(napi_env env, napi_value* result) {
-  return env->napi_get_loader(env, result);
-}
-
-napi_status napi_open_context_scope_primjs(napi_env env,
-                                           napi_context_scope* result) {
-  return env->napi_open_context_scope(env, result);
-}
-
-napi_status napi_close_context_scope_primjs(napi_env env,
-                                            napi_context_scope scope) {
-  return env->napi_close_context_scope(env, scope);
-}
-
-napi_status napi_open_error_scope_primjs(napi_env env,
-                                         napi_error_scope* result) {
-  return env->napi_open_error_scope(env, result);
-}
-
-napi_status napi_close_error_scope_primjs(napi_env env,
-                                          napi_error_scope scope) {
-  return env->napi_close_error_scope(env, scope);
-}
-
-napi_status napi_equals_primjs(napi_env env, napi_value lhs, napi_value rhs,
-                               bool* result) {
-  return env->napi_equals(env, lhs, rhs, result);
-}
-
-napi_status napi_get_unhandled_rejection_exception_primjs(napi_env env,
-                                                          napi_value* result) {
-  return env->napi_get_unhandled_rejection_exception(env, result);
-}
-
-napi_status napi_get_own_property_descriptor_primjs(napi_env env,
-                                                    napi_value obj,
-                                                    napi_value prop,
-                                                    napi_value* result) {
-  return env->napi_get_own_property_descriptor(env, obj, prop, result);
-}
-
-NAPI_DEPRECATED napi_status napi_unref_threadsafe_function_primjs(
+napi_status napi_unref_threadsafe_function_primjs(
     napi_env env, napi_threadsafe_function func) {
   env->napi_throw_error(env, "not implemented error",
                         "napi_unref_threadsafe_function is not implemented.\n");
   return napi_pending_exception;
 }
-NAPI_DEPRECATED napi_status napi_ref_threadsafe_function_primjs(
-    napi_env env, napi_threadsafe_function func) {
+napi_status napi_ref_threadsafe_function_primjs(napi_env env,
+                                                napi_threadsafe_function func) {
   env->napi_throw_error(env, "not implemented error",
                         "napi_ref_threadsafe_function is not implemented.\n");
   return napi_pending_exception;
+}
+napi_status napi_acquire_threadsafe_function_primjs(
+    napi_threadsafe_function func) {
+  fprintf(stderr,
+          "Node-API function 'napi_acquire_threadsafe_function' is not "
+          "implemented.\n");
+  return napi_generic_failure;
 }
 
 napi_status napi_create_buffer_primjs(napi_env env, size_t length, void** data,
@@ -776,21 +758,6 @@ napi_status napi_fatal_exception_primjs(napi_env env, napi_value err) {
   env->napi_throw_error(env, "not implemented error",
                         "napi_fatal_exception is not implemented.\n");
   return napi_pending_exception;
-}
-
-void napi_fatal_error_primjs(const char* location, size_t location_len,
-                             const char* message, size_t message_len) {
-  if (location && location_len > 0) {
-    std::printf("Fatal error location: %.*s\n", static_cast<int>(location_len),
-                location);
-  }
-
-  if (message && message_len > 0) {
-    std::printf("Fatal error message: %.*s\n", static_cast<int>(message_len),
-                message);
-  }
-
-  std::abort();
 }
 
 napi_status napi_create_date_primjs(napi_env env, double time,
@@ -880,6 +847,13 @@ napi_status napi_add_async_cleanup_hook_primjs(napi_env env, void* hook,
   return napi_pending_exception;
 }
 
+napi_status napi_remove_async_cleanup_hook_primjs(void* remove_handle) {
+  fprintf(stderr,
+          "Node-API function 'napi_remove_async_cleanup_hook' is not "
+          "implemented.\n");
+  return napi_generic_failure;
+}
+
 napi_status napi_object_freeze_primjs(napi_env env, napi_value object) {
   env->napi_throw_error(env, "not implemented error",
                         "napi_object_freeze is not implemented.\n");
@@ -952,6 +926,21 @@ napi_status napi_reject_deferred_primjs(napi_env env, napi_deferred deferred,
   return napi_pending_exception;
 }
 
+napi_status napi_open_callback_scope_primjs(napi_env env,
+                                            napi_value resource_object,
+                                            napi_async_context context,
+                                            napi_callback_scope* result) {
+  env->napi_throw_error(env, "not implemented error",
+                        "napi_open_callback_scope is not implemented.\n");
+  return napi_pending_exception;
+}
+napi_status napi_close_callback_scope_primjs(napi_env env,
+                                             napi_callback_scope scope) {
+  env->napi_throw_error(env, "not implemented error",
+                        "napi_close_callback_scope is not implemented.\n");
+  return napi_pending_exception;
+}
+
 napi_status napi_get_all_property_names_primjs(
     napi_env env, napi_value object, napi_key_collection_mode key_mode,
     napi_key_filter key_filter, napi_key_conversion key_conversion,
@@ -973,10 +962,6 @@ napi_status napi_get_node_version_primjs(
   env->napi_throw_error(env, "Unsupported error",
                         "napi_get_node_version is unsupported.\n");
   return napi_pending_exception;
-}
-
-void napi_module_register_primjs(napi_module* mod) {
-  napi_module_register_xx(mod);
 }
 
 EXTERN_C_END

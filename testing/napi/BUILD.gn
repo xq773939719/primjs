@@ -11,6 +11,7 @@ unittest_set("napi_testset") {
     "../../src/napi:napi_env",
     "../../src/napi:napi_quickjs",
     "../../src/napi:napi_runtime",
+    "../../src/napi/adapter",
   ]
   if (target_os == "mac") {
     defines += [ "JS_ENGINE_JSC" ]

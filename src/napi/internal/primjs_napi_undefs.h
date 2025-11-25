@@ -101,3 +101,7 @@
 #undef napi_key_keep_numbers
 #undef napi_key_numbers_to_strings
 #undef napi_key_conversion
+#undef napi_async_context__
+#undef napi_async_context
+#undef napi_callback_scope
+#undef napi_callback_scope__

@@ -118,3 +118,7 @@
 #define napi_key_keep_numbers napi_key_keep_numbers_primjs
 #define napi_key_numbers_to_strings napi_key_numbers_to_strings_primjs
 #define napi_key_conversion napi_key_conversion_primjs
+#define napi_async_context__ napi_async_context_primjs__
+#define napi_async_context napi_async_context_primjs
+#define napi_callback_scope napi_callback_scope_primjs
+#define napi_callback_scope__ napi_callback_scope_primjs__

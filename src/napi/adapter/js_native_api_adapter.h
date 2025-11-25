@@ -26,6 +26,9 @@ EXTERN_C_START
 typedef void (*napi_threadsafe_function_call_js_original)(
     napi_env env, napi_value js_callback, void* context, void* data);
 
+typedef struct napi_callback_scope__* napi_callback_scope;
+typedef struct napi_async_context__* napi_async_context;
+
 NAPI_EXTERN napi_status napi_get_version_primjs(napi_env env, uint32_t* result);
 
 // ENGINE CALL
@@ -311,10 +314,7 @@ NAPI_EXTERN napi_status napi_is_typedarray_primjs(napi_env env,
 NAPI_EXTERN napi_status napi_create_typedarray_primjs(
     napi_env env, napi_typedarray_type type, size_t length,
     napi_value arraybuffer, size_t byte_offset, napi_value* result);
-NAPI_EXTERN napi_status napi_is_typedarray_of_primjs(napi_env env,
-                                                     napi_value typedarray,
-                                                     napi_typedarray_type type,
-                                                     bool* result);
+
 NAPI_EXTERN napi_status napi_get_typedarray_info_primjs(
     napi_env env, napi_value typedarray, napi_typedarray_type* type,
     size_t* length, void** data, napi_value* arraybuffer, size_t* byte_offset);
@@ -405,40 +405,14 @@ napi_release_threadsafe_function_primjs(napi_threadsafe_function func);
 NAPI_EXTERN napi_status napi_get_threadsafe_function_context_primjs(
     napi_threadsafe_function func, void** result);
 
-// Loader API
-NAPI_EXTERN napi_status napi_get_loader_primjs(napi_env env,
-                                               napi_value* result);
+NAPI_EXTERN void napi_module_register_primjs(napi_module* mod);
 
-// Context scope APIs
-NAPI_EXTERN napi_status
-napi_open_context_scope_primjs(napi_env env, napi_context_scope* result);
-NAPI_EXTERN napi_status
-napi_close_context_scope_primjs(napi_env env, napi_context_scope scope);
-
-// Error scope APIs
-NAPI_EXTERN napi_status napi_open_error_scope_primjs(napi_env env,
-                                                     napi_error_scope* result);
-NAPI_EXTERN napi_status napi_close_error_scope_primjs(napi_env env,
-                                                      napi_error_scope scope);
-
-// Value comparison
-NAPI_EXTERN napi_status napi_equals_primjs(napi_env env, napi_value lhs,
-                                           napi_value rhs, bool* result);
-
-// Promise utilities
-NAPI_EXTERN napi_status
-napi_get_unhandled_rejection_exception_primjs(napi_env env, napi_value* result);
-
-// Property descriptor
-NAPI_EXTERN napi_status napi_get_own_property_descriptor_primjs(
-    napi_env env, napi_value obj, napi_value prop, napi_value* result);
-
-// no implementation apis
-
-NAPI_EXTERN NAPI_DEPRECATED napi_status napi_unref_threadsafe_function_primjs(
-    napi_env env, napi_threadsafe_function func);
-NAPI_EXTERN NAPI_DEPRECATED napi_status napi_ref_threadsafe_function_primjs(
-    napi_env env, napi_threadsafe_function func);
+// Not implemented apis
+// NAPI_VERSION 1
+NAPI_EXTERN void napi_fatal_error_primjs(const char* location,
+                                         size_t location_len,
+                                         const char* message,
+                                         size_t message_len);
 
 NAPI_EXTERN napi_status napi_create_buffer_primjs(napi_env env, size_t length,
                                                   void** data,
@@ -461,14 +435,32 @@ NAPI_EXTERN napi_status napi_get_buffer_info_primjs(napi_env env,
                                                     void** data,
                                                     size_t* length);
 
+NAPI_EXTERN napi_status napi_resolve_deferred_primjs(napi_env env,
+                                                     napi_deferred deferred,
+                                                     napi_value resolution);
+NAPI_EXTERN napi_status napi_reject_deferred_primjs(napi_env env,
+                                                    napi_deferred deferred,
+                                                    napi_value rejection);
+
+// NAPI VERSION 3
 NAPI_EXTERN napi_status napi_fatal_exception_primjs(napi_env env,
                                                     napi_value err);
 
-NAPI_EXTERN void napi_fatal_error_primjs(const char* location,
-                                         size_t location_len,
-                                         const char* message,
-                                         size_t message_len);
+NAPI_EXTERN napi_status napi_open_callback_scope_primjs(
+    napi_env env, napi_value resource_object, napi_async_context context,
+    napi_callback_scope* result);
+NAPI_EXTERN napi_status
+napi_close_callback_scope_primjs(napi_env env, napi_callback_scope scope);
 
+/// NAPI VERSION 4
+NAPI_EXTERN napi_status napi_unref_threadsafe_function_primjs(
+    napi_env env, napi_threadsafe_function func);
+NAPI_EXTERN napi_status napi_ref_threadsafe_function_primjs(
+    napi_env env, napi_threadsafe_function func);
+NAPI_EXTERN napi_status
+napi_acquire_threadsafe_function_primjs(napi_threadsafe_function func);
+
+// NAPI VERSION 5
 NAPI_EXTERN napi_status napi_create_date_primjs(napi_env env, double time,
                                                 napi_value* result);
 
@@ -479,7 +471,7 @@ NAPI_EXTERN napi_status napi_get_date_value_primjs(napi_env env,
                                                    napi_value value,
                                                    double* result);
 
-// BigInt
+// NAPI VERSION 6
 NAPI_EXTERN napi_status napi_create_bigint_int64_primjs(napi_env env,
                                                         int64_t value,
                                                         napi_value* result);
@@ -548,16 +540,6 @@ NAPI_EXTERN napi_status node_api_create_external_string_latin1_primjs(
 NAPI_EXTERN napi_status node_api_create_external_string_utf16_primjs(
     napi_env env, char16_t* str, size_t length, void* finalize_callback,
     void* finalize_hint, napi_value* result, bool* copied);
-
-NAPI_EXTERN napi_status napi_resolve_deferred_primjs(napi_env env,
-                                                     napi_deferred deferred,
-                                                     napi_value resolution);
-NAPI_EXTERN napi_status napi_reject_deferred_primjs(napi_env env,
-                                                    napi_deferred deferred,
-                                                    napi_value rejection);
-
-NAPI_EXTERN void napi_module_register_primjs(napi_module* mod);
-
 NAPI_EXTERN napi_status napi_get_all_property_names_primjs(
     napi_env env, napi_value object, napi_key_collection_mode key_mode,
     napi_key_filter key_filter, napi_key_conversion key_conversion,

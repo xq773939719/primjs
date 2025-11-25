@@ -476,6 +476,8 @@ JSBigInt *js_bigint_add(LEPUSContext *ctx, const JSBigInt *a, const JSBigInt *b,
   n2 = max_int(a->len, b->len);
   n1 = min_int(a->len, b->len);
   r = js_bigint_new(ctx, n2);
+  HandleScope func_scope(ctx);
+  func_scope.PushHandle(r, HANDLE_TYPE_DIR_HEAP_OBJ);
   if (!r) return NULL;
   /* XXX: optimize */
   /* common part */
@@ -518,6 +520,7 @@ JSBigInt *js_bigint_mul(LEPUSContext *ctx, const JSBigInt *a,
   JSBigInt *r;
 
   r = js_bigint_new(ctx, a->len + b->len);
+  HandleScope func_scope(ctx, r, HANDLE_TYPE_DIR_HEAP_OBJ);
   if (!r) return NULL;
   mp_mul_basecase(r->tab, a->tab, a->len, b->tab, b->len);
   /* correct the result if negative operands (no overflow is
@@ -536,6 +539,7 @@ JSBigInt *js_bigint_divrem(LEPUSContext *ctx, const JSBigInt *a,
   JSBigInt *r, *q;
   js_limb_t *tabb, h;
   int na, nb, a_sign, b_sign, shift;
+  HandleScope func_scope(ctx);
 
   if (b->len == 1 && b->tab[0] == 0) {
     LEPUS_ThrowRangeError(ctx, "BigInt division by zero");
@@ -548,6 +552,7 @@ JSBigInt *js_bigint_divrem(LEPUSContext *ctx, const JSBigInt *a,
   nb = b->len;
 
   r = js_bigint_new(ctx, na + 2);
+  func_scope.PushHandle(r, HANDLE_TYPE_DIR_HEAP_OBJ);
   if (!r) return NULL;
   if (a_sign) {
     mp_neg(r->tab, a->tab, na);
@@ -558,6 +563,7 @@ JSBigInt *js_bigint_divrem(LEPUSContext *ctx, const JSBigInt *a,
   while (na > 1 && r->tab[na - 1] == 0) na--;
 
   tabb = (js_limb_t *)lepus_malloc(ctx, nb * sizeof(tabb[0]), 0);
+  func_scope.PushHandle(tabb, HANDLE_TYPE_DIR_HEAP_OBJ);
   if (!tabb) {
     if (!ctx->gc_enable) {
       lepus_free(ctx, r);
@@ -599,6 +605,7 @@ JSBigInt *js_bigint_divrem(LEPUSContext *ctx, const JSBigInt *a,
   }
 
   q = js_bigint_new(ctx, na - nb + 2); /* one more limb for the sign */
+  func_scope.PushHandle(q, HANDLE_TYPE_DIR_HEAP_OBJ);
   if (!q) {
     if (!ctx->gc_enable) {
       lepus_free(ctx, r);
@@ -649,6 +656,7 @@ JSBigInt *js_bigint_logic(LEPUSContext *ctx, const JSBigInt *a,
   b_sign = -js_bigint_sign(b);
 
   r = js_bigint_new(ctx, a_len);
+  HandleScope func_scope(ctx, r, HANDLE_TYPE_DIR_HEAP_OBJ);
   if (!r) return NULL;
   switch (op) {
     case OP_or:
@@ -705,6 +713,7 @@ JSBigInt *js_bigint_shl(LEPUSContext *ctx, const JSBigInt *a,
   d = shift1 / JS_LIMB_BITS;
   shift = shift1 % JS_LIMB_BITS;
   r = js_bigint_new(ctx, a->len + d);
+  HandleScope func_scope(ctx, r, HANDLE_TYPE_DIR_HEAP_OBJ);
   if (!r) return NULL;
   for (i = 0; i < d; i++) r->tab[i] = 0;
   if (shift == 0) {
@@ -731,6 +740,7 @@ JSBigInt *js_bigint_shr(LEPUSContext *ctx, const JSBigInt *a,
   n1 = a->len - d;
   r = js_bigint_new(ctx, n1);
   if (!r) return NULL;
+  HandleScope func_scope(ctx, r, HANDLE_TYPE_DIR_HEAP_OBJ);
   if (shift == 0) {
     for (i = 0; i < n1; i++) {
       r->tab[i] = a->tab[i + d];
@@ -747,7 +757,7 @@ JSBigInt *js_bigint_pow(LEPUSContext *ctx, const JSBigInt *a, JSBigInt *b) {
   uint32_t e;
   int n_bits, i;
   JSBigInt *r, *r1;
-
+  HandleScope func_scope(ctx);
   /* b must be >= 0 */
   if (js_bigint_sign(b)) {
     LEPUS_ThrowRangeError(ctx, "BigInt negative exponent");
@@ -794,6 +804,7 @@ JSBigInt *js_bigint_pow(LEPUSContext *ctx, const JSBigInt *a, JSBigInt *b) {
 
   r = js_bigint_new(ctx, a->len);
   if (!r) return NULL;
+  func_scope.PushHandle(r, HANDLE_TYPE_DIR_HEAP_OBJ);
   memcpy(r->tab, a->tab, a->len * sizeof(a->tab[0]));
   for (i = n_bits - 2; i >= 0; i--) {
     r1 = js_bigint_mul(ctx, r, r);
@@ -1047,6 +1058,7 @@ JSBigInt *js_bigint_from_string(LEPUSContext *ctx, const char *str, int radix) {
   size_t n_digits, n_bits, len, i, n_limbs;
   JSBigInt *r;
   js_limb_t v, c, h;
+  HandleScope func_scope(ctx);
 
   is_neg = 0;
   if (*p == '-') {
@@ -1072,6 +1084,7 @@ JSBigInt *js_bigint_from_string(LEPUSContext *ctx, const char *str, int radix) {
   /* we add one extra bit for the sign */
   n_limbs = max_int(1, n_bits / JS_LIMB_BITS + 1);
   r = js_bigint_new(ctx, n_limbs);
+  func_scope.PushHandle(r, HANDLE_TYPE_DIR_HEAP_OBJ);
   if (!r) return NULL;
   if (radix == 10) {
     int digits_per_limb = JS_LIMB_DIGITS;
@@ -1322,6 +1335,7 @@ LEPUSValue js_atof(LEPUSContext *ctx, const char *str, const char **pp,
       JSBigInt *r;
       if (has_legacy_octal || is_float) goto fail;
       r = js_bigint_from_string(ctx, buf, radix);
+      func_scope.PushHandle(r, HANDLE_TYPE_DIR_HEAP_OBJ);
       if (!r) goto mem_error;
       val = JS_CompactBigInt(ctx, r);
     } break;
@@ -1385,6 +1399,7 @@ int js_compare_bigint(LEPUSContext *ctx, OPCodeEnum op, LEPUSValue op1,
       val = -val;
     } else if (tag2 == LEPUS_TAG_FLOAT64) {
       p1 = JS_ToBigIntBuf(ctx, &buf1, op1);
+      func_scope.PushHandle(p1, HANDLE_TYPE_DIR_HEAP_OBJ);
       val = js_bigint_float64_cmp(ctx, p1, LEPUS_VALUE_GET_FLOAT64(op2));
       if (val == 2) {
       unordered:

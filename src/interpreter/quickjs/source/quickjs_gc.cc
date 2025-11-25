@@ -27675,7 +27675,7 @@ LEPUSValue prim_js_unary_arith_slow_gc(LEPUSContext *ctx, LEPUSValue op1,
   int64_t tag;
   JSBigIntBuf buf1;
   JSBigInt *p1;
-
+  HandleScope func_scope(ctx, &op1, HANDLE_TYPE_LEPUS_VALUE);
   /* fast path for float64 */
   if (LEPUS_TAG_IS_FLOAT64(LEPUS_VALUE_GET_TAG(op1))) goto handle_float64;
   op1 = JS_ToNumericFree(ctx, op1);
@@ -27760,7 +27760,8 @@ LEPUSValue prim_js_add_slow_gc(LEPUSContext *ctx, LEPUSValue op1,
                                LEPUSValue op2) {
   int64_t tag1, tag2;
   double d1, d2;
-
+  HandleScope func_scope(ctx, &op1, HANDLE_TYPE_LEPUS_VALUE);
+  func_scope.PushHandle(&op2, HANDLE_TYPE_LEPUS_VALUE);
   tag1 = LEPUS_VALUE_GET_NORM_TAG(op1);
   tag2 = LEPUS_VALUE_GET_NORM_TAG(op2);
   /* fast path for float64 */
@@ -27831,6 +27832,7 @@ exception:
 no_inline LEPUSValue prim_js_not_slow_gc(LEPUSContext *ctx, LEPUSValue op) {
   int32_t v1;
   op = JS_ToNumericFree(ctx, op);
+  HandleScope func_scope(ctx, &op, HANDLE_TYPE_LEPUS_VALUE);
   if (LEPUS_IsException(op)) return LEPUS_EXCEPTION;
 
   if (LEPUS_VALUE_IS_BIG_INT(op)) {
@@ -27849,7 +27851,8 @@ LEPUSValue prim_js_binary_arith_slow_gc(LEPUSContext *ctx, LEPUSValue op1,
                                         LEPUSValue op2, OPCodeEnum op) {
   int64_t tag1, tag2;
   double d1, d2;
-
+  HandleScope func_scope(ctx, &op1, HANDLE_TYPE_LEPUS_VALUE);
+  func_scope.PushHandle(&op2, HANDLE_TYPE_LEPUS_VALUE);
   tag1 = LEPUS_VALUE_GET_NORM_TAG(op1);
   tag2 = LEPUS_VALUE_GET_NORM_TAG(op2);
   /* fast path for float operations */
@@ -27972,6 +27975,8 @@ LEPUSValue prim_js_binary_logic_slow_gc(LEPUSContext *ctx, LEPUSValue op1,
                                         LEPUSValue op2, OPCodeEnum op) {
   uint32_t v1, v2, r;
   int64_t tag1, tag2;
+  HandleScope func_scope(ctx, &op1, HANDLE_TYPE_LEPUS_VALUE);
+  func_scope.PushHandle(&op2, HANDLE_TYPE_LEPUS_VALUE);
   op1 = JS_ToNumericFree(ctx, op1);
   if (LEPUS_IsException(op1)) goto exception;
   op2 = JS_ToNumericFree(ctx, op2);
@@ -28043,6 +28048,8 @@ exception:
 LEPUSValue prim_js_shr_slow_gc(LEPUSContext *ctx, LEPUSValue op1,
                                LEPUSValue op2) {
   uint32_t v1, v2, r;
+  HandleScope func_scope(ctx, &op1, HANDLE_TYPE_LEPUS_VALUE);
+  func_scope.PushHandle(&op2, HANDLE_TYPE_LEPUS_VALUE);
   op1 = JS_ToNumericFree(ctx, op1);
   if (LEPUS_IsException(op1)) {
     goto exception;
@@ -28203,6 +28210,8 @@ LEPUSValue prim_js_eq_slow_gc(LEPUSContext *ctx, LEPUSValue op1, LEPUSValue op2,
                               int is_neq) {
   int res;
   int64_t tag1, tag2;
+  HandleScope func_scope(ctx, &op1, HANDLE_TYPE_LEPUS_VALUE);
+  func_scope.PushHandle(&op2, HANDLE_TYPE_LEPUS_VALUE);
 redo:
   tag1 = LEPUS_VALUE_GET_NORM_TAG(op1);
   tag2 = LEPUS_VALUE_GET_NORM_TAG(op2);
@@ -28317,6 +28326,7 @@ __exception int js_post_inc_slow_gc(LEPUSContext *ctx, LEPUSValue *sp,
   /* XXX: allow custom operators */
   op1 = sp[-1];
   op1 = JS_ToNumericFree(ctx, op1);
+  HandleScope func_scope(ctx, &op1, HANDLE_TYPE_LEPUS_VALUE);
   if (LEPUS_IsException(op1)) {
     sp[-1] = LEPUS_UNDEFINED;
     return -1;

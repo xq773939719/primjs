@@ -401,3 +401,20 @@ void Visitor::VisitDebuggerInfo(void *ptr, int32_t local_idx) noexcept {
 }
 
 #endif  // ENABLE_COMPATIBLE_MM
+
+void HeapObjStore(LEPUSContext *ctx, void *fieldAddr, void *value) {
+  *reinterpret_cast<address_t *>(fieldAddr) = (address_t)value;
+}
+void HeapObjStore(LEPUSContext *ctx, void *fieldAddr, LEPUSValue value) {
+  *reinterpret_cast<LEPUSValue *>(fieldAddr) = value;
+}
+void WriteBarrierNoStore(LEPUSRuntime *rt, void *value) {}
+void WriteBarrierNoStore(LEPUSContext *ctx, LEPUSValue value) {}
+void WriteBarrierNoStore(LEPUSContext *ctx, void *value) {}
+
+void HeapObjStoreNoCtx(void *fieldAddr, LEPUSValue value) {
+  *reinterpret_cast<LEPUSValue *>(fieldAddr) = value;
+}
+void HeapObjStoreNoCtx(void *fieldAddr, void *value) {
+  *reinterpret_cast<address_t *>(fieldAddr) = (address_t)value;
+}

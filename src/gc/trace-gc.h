@@ -159,4 +159,12 @@ class GCObserver {
 #include "primjs_napi_undefs.h"
 #endif
 
+void HeapObjStore(LEPUSContext *ctx, void *fieldAddr, LEPUSValue value);
+void HeapObjStore(LEPUSContext *ctx, void *fieldAddr, void *value);
+void WriteBarrierNoStore(LEPUSRuntime *rt, void *value);
+void WriteBarrierNoStore(LEPUSContext *ctx, LEPUSValue value);
+void WriteBarrierNoStore(LEPUSContext *ctx, void *value);
+void HeapObjStoreNoCtx(void *fieldAddr, LEPUSValue value);
+void HeapObjStoreNoCtx(void *fieldAddr, void *value);
+
 #endif  // SRC_GC_TRACE_GC_H_

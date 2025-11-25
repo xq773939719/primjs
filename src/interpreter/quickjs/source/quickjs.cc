@@ -904,7 +904,7 @@ bool primjs_snapshot_enabled() {
 
 bool gc_enabled() {
 #ifdef ENABLE_COMPATIBLE_MM
-#ifdef ENABLE_TRACING_GC
+#if defined(ENABLE_TRACING_GC) || defined(ENABLE_TT_ANDROID_MODE)
   return true;
 #else
   return GC_ENABLE & settingsFlag;
@@ -1414,9 +1414,14 @@ void LEPUS_SetRuntimeInfo(LEPUSRuntime *rt, const char *s) {
         }
       }
 #endif
-      if ((!strcmp(s, "effect") && !effect_enabled()) ||
+      bool need_reset =
+          (!strcmp(s, "effect") && !effect_enabled()) ||
           (rt->is_lepusng && lepusng_gc_disabled()) ||
-          (!strcmp(s, "Lynx_LepusNG_RC") || !strcmp(s, "Lynx_JS_RC"))) {
+          (!strcmp(s, "Lynx_LepusNG_RC") || !strcmp(s, "Lynx_JS_RC"));
+#ifdef ENABLE_TT_ANDROID_MODE
+      need_reset = need_reset || !strcmp(s, "Lynx_LepusNG");
+#endif
+      if (need_reset) {
         JS_FreeRuntimeForEffect(rt);
         JS_ResetRuntimeForEffect(rt, &def_malloc_funcs, NULL);
       }

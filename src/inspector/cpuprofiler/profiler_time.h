@@ -38,7 +38,7 @@ class TimeTicks {
     }
     ticks = (mach_absolute_time() * (info.numer / info.denom) /
              kNanosecondsPerMicrosecond);
-#elif defined(OS_ANDROID)
+#elif defined(OS_ANDROID) || defined(OS_HARMONY)
     struct timespec ts;
     if (clock_gettime(CLOCK_BOOTTIME, &ts) != 0) {
       ticks = 0;

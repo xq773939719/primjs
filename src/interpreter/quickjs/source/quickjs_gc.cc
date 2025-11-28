@@ -13960,8 +13960,12 @@ LEPUSValue JS_DeepEqual_GC(LEPUSContext *ctx, LEPUSValueConst obj1,
     sh1 = p1->shape;
     sh2 = p2->shape;
     if (sh1->prop_count != sh2->prop_count) goto fail;
-    for (i = 0, pr1 = get_shape_prop(sh1); i < sh1->prop_count; i++, pr1++) {
+    int prop_count1 = sh1->prop_count, prop_count2 = sh2->prop_count;
+    for (i = 0, pr1 = get_shape_prop(sh1), pr2 = get_shape_prop(sh2);
+         i < sh1->prop_count; i++, pr1++, pr2++) {
       atom = pr1->atom;
+      if (atom == JS_ATOM_NULL && pr1->flags == 0) prop_count1--;
+      if (pr2->atom == JS_ATOM_NULL && pr2->flags == 0) prop_count2--;
       if (atom != JS_ATOM_NULL && JS_AtomIsString(ctx, atom) &&
           (pr1->flags & LEPUS_PROP_ENUMERABLE)) {
         val2 = JS_GetPropertyInternal_GC(ctx, obj2, atom, obj2, 0);
@@ -13971,6 +13975,7 @@ LEPUSValue JS_DeepEqual_GC(LEPUSContext *ctx, LEPUSValueConst obj1,
         if (!LEPUS_VALUE_GET_BOOL(result)) goto fail;
       }
     }
+    if (prop_count1 != prop_count2) goto fail;
     goto ok;
   }
 

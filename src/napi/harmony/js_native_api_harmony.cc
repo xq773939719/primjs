@@ -1219,6 +1219,12 @@ static napi_status napi_set_instance_data(napi_env env, uint64_t key,
   return napi_clear_last_error(env);
 }
 
+static napi_status napi_set_instance_data_spec_compliant(
+    napi_env env, uint64_t key, void *data, napi_finalize finalize_cb,
+    void *finalize_hint) {
+  return napi_set_instance_data(env, key, data, finalize_cb, finalize_hint);
+}
+
 static napi_status napi_get_instance_data(napi_env env, uint64_t key,
                                           void **data) {
   auto &map = env->ctx->instance_data_;

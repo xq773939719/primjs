@@ -20,11 +20,28 @@
 
 #include "js_native_api_types.h"
 #include "napi_runtime.h"
+#include "napi_state.h"
 
 #ifdef USE_PRIMJS_NAPI
 #include "primjs_napi_defines.h"
 #endif
 
+#define CHECK_ENV(env)                                       \
+  do {                                                       \
+    if ((env) == nullptr) {                                  \
+      return napi_set_last_error(nullptr, napi_invalid_arg); \
+    }                                                        \
+  } while (0)
+
+#define RETURN_STATUS_IF_FALSE(env, condition, status) \
+  do {                                                 \
+    if (!(condition)) {                                \
+      return napi_set_last_error((env), (status));     \
+    }                                                  \
+  } while (0)
+
+#define CHECK_ARG(env, arg) \
+  RETURN_STATUS_IF_FALSE((env), ((arg) != nullptr), napi_invalid_arg)
 EXTERN_C_START
 
 napi_status napi_get_version_primjs(napi_env env, uint32_t* result) {
@@ -549,16 +566,20 @@ napi_status napi_add_finalizer_primjs(napi_env env, napi_value js_object,
                                  finalize_hint, result);
 }
 
-napi_status napi_set_instance_data_primjs(napi_env env, uint64_t key,
-                                          void* data, napi_finalize finalize_cb,
+static const uint64_t kNapiAdapterInstanceDataKey =
+    reinterpret_cast<uint64_t>(&kNapiAdapterInstanceDataKey);
+napi_status napi_set_instance_data_primjs(napi_env env, void* data,
+                                          napi_finalize finalize_cb,
                                           void* finalize_hint) {
-  return env->napi_set_instance_data(env, key, data, finalize_cb,
-                                     finalize_hint);
+  CHECK_ENV(env);
+  return env->napi_set_instance_data_spec_compliant(
+      env, kNapiAdapterInstanceDataKey, data, finalize_cb, finalize_hint);
 }
 
-napi_status napi_get_instance_data_primjs(napi_env env, uint64_t key,
-                                          void** data) {
-  return env->napi_get_instance_data(env, key, data);
+napi_status napi_get_instance_data_primjs(napi_env env, void** data) {
+  CHECK_ENV(env);
+  CHECK_ARG(env, data);
+  return env->napi_get_instance_data(env, kNapiAdapterInstanceDataKey, data);
 }
 
 napi_status napi_get_last_error_info_primjs(

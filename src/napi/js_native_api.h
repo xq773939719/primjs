@@ -501,6 +501,10 @@ struct napi_env__ {
                                      size_t script_len, const uint8_t** data,
                                      int* length);
 #endif  // ENABLE_CODECACHE
+
+  napi_status (*napi_set_instance_data_spec_compliant)(
+      napi_env env, uint64_t key, void* data, napi_finalize finalize_cb,
+      void* finalize_hint);
 };
 
 #ifdef ENABLE_CODECACHE
@@ -627,6 +631,7 @@ struct napi_env__ {
   V(open_context_scope)                \
   V(close_context_scope)               \
   V(get_own_property_descriptor)       \
+  V(set_instance_data_spec_compliant)  \
   NAPI_ENGINE_CACHE_CALL(V)
 
 // These functions share same implementations across JS engines

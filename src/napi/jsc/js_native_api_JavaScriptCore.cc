@@ -376,7 +376,6 @@ class RefBase : protected Finalizer, RefTracker {
 
   inline uint32_t RefCount() { return _refcount; }
 
- protected:
   inline void Finalize(bool is_env_teardown = false) override {
     if (is_env_teardown && RefCount() > 0) _refcount = 0;
 
@@ -2778,6 +2777,23 @@ napi_status napi_set_instance_data(napi_env env, uint64_t key, void* data,
   auto it = env->ctx->instance_data_registry.find(key);
   if (it != env->ctx->instance_data_registry.end()) {
     return napi_conflict_instance_data;
+  }
+
+  env->ctx->instance_data_registry[key] =
+      jscimpl::RefBase::New(env, 0, true, finalize_cb, data, finalize_hint);
+
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_set_instance_data_spec_compliant(napi_env env, uint64_t key,
+                                                  void* data,
+                                                  napi_finalize finalize_cb,
+                                                  void* finalize_hint) {
+  auto it = env->ctx->instance_data_registry.find(key);
+  if (it != env->ctx->instance_data_registry.end()) {
+    jscimpl::RefBase* idata = static_cast<jscimpl::RefBase*>(it->second);
+    env->ctx->instance_data_registry.erase(it);
+    idata->Finalize(false);
   }
 
   env->ctx->instance_data_registry[key] =

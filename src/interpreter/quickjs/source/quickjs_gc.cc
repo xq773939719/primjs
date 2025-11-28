@@ -20165,12 +20165,18 @@ static int make_json_val(LEPUSContext *ctx, LEPUSValue obj,
 // Special handling for INT64-bit data in lynx
 #if JS_LIMB_BITS == 64
       auto *p = LEPUS_VALUE_GET_BIGINT(obj);
-      if (p->len == 1 || (p->len == 2 && p->tab[1] == 0)) {
-        LEPUSValue bignum_str = LEPUS_AtomToValue(
-            ctx, ctx->rt->class_array[JS_CLASS_BIG_INT].class_name);
-        func_scope.PushHandle(&bignum_str, HANDLE_TYPE_LEPUS_VALUE);
-        return make_json_val(ctx, bignum_str, jsc, val_hdr, val, alc_len,
-                             str_arr, ts, cs);
+      if (p->len == 1) {
+        val_incr();
+        int64_t num = p->tab[0];
+        val->tag = JSON_TYPE_NUM | JSON_SUBTYPE_SINT;
+        val->uni.i64 = num;
+        return 0;
+      } else if (p->len == 2 && p->tab[1] == 0) {
+        val_incr();
+        uint64_t num = p->tab[0];
+        val->tag = JSON_TYPE_NUM | JSON_SUBTYPE_REAL;
+        val->uni.f64 = static_cast<double>(num);
+        return 0;
       }
 #endif
       LEPUS_ThrowTypeError(ctx, "bigint are forbidden in JSON.stringify");

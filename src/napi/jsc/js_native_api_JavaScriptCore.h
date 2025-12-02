@@ -31,6 +31,10 @@
 
 #include "quickjs/include/primjs_monitor.h"
 
+#ifdef USE_PRIMJS_NAPI
+#include "primjs_napi_defines.h"
+#endif
+
 namespace jscimpl {
 
 class RefTracker {
@@ -238,5 +242,9 @@ class Finalizer {
   bool _has_env_reference = false;
 };
 }  // namespace jscimpl
+
+#ifdef USE_PRIMJS_NAPI
+#include "primjs_napi_undefs.h"
+#endif
 
 #endif  // SRC_NAPI_JSC_JS_NATIVE_API_JAVASCRIPTCORE_H_

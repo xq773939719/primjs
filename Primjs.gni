@@ -52,6 +52,7 @@ template("napi_source_set") {
                            [
                              "configs",
                              "public_configs",
+                             "defines",
                            ])
 
     if (!defined(deps)) {
@@ -63,6 +64,17 @@ template("napi_source_set") {
     }
     if (defined(invoker.configs)) {
       configs += invoker.configs
+    }
+
+    if (!defined(defines)) {
+      defines = []
+    }
+    if (defined(invoker.defines)) {
+      defines += invoker.defines
+    }
+    
+    if (defined(use_primjs_napi) && use_primjs_napi) {
+      defines += [ "USE_PRIMJS_NAPI" ]
     }
 
     if (!defined(public_configs)) {

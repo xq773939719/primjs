@@ -22,6 +22,10 @@
 #include "basic/log/logging.h"
 #include "napi_env_jsc.h"
 
+#ifdef USE_PRIMJS_NAPI
+#include "primjs_napi_defines.h"
+#endif
+
 #define DECLARE_METHOD(API) \
   static std::remove_pointer<decltype(napi_env__::napi_##API)>::type napi_##API;
 

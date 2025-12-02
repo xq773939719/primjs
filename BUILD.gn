@@ -123,6 +123,9 @@ config("napi_public_config") {
   defines = [
     "PRIMJS_MIN_LOG_LEVEL=5",  # disable alog in unittests
   ]
+  if (use_primjs_napi) {
+    defines += [ "USE_PRIMJS_NAPI" ]
+  }
   if (use_rtti) {
     defines += [ "NAPI_CPP_RTTI" ]
   } else {

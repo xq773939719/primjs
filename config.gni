@@ -54,6 +54,8 @@ declare_args() {
 
   gen_android_embedded = false
 
+  use_primjs_napi = false
+
   use_rtti = false
 
   # Enable primjs trace

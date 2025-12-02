@@ -42,6 +42,20 @@
 
 #define CHECK_ARG(env, arg) \
   RETURN_STATUS_IF_FALSE((env), ((arg) != nullptr), napi_invalid_arg)
+
+#define CHECK_NAPI(expr)                  \
+  do {                                    \
+    napi_status status = (expr);          \
+    if (status != napi_ok) return status; \
+  } while (0)
+
+#define CHECK_TO_TYPE(env, object, expected_type, expected_error)           \
+  do {                                                                      \
+    CHECK_ARG(env, object);                                                 \
+    napi_valuetype obj_type = napi_undefined;                               \
+    CHECK_NAPI(env->napi_typeof(env, object, &obj_type));                   \
+    RETURN_STATUS_IF_FALSE(env, obj_type == expected_type, expected_error); \
+  } while (0)
 EXTERN_C_START
 
 napi_status napi_get_version_primjs(napi_env env, uint32_t* result) {
@@ -283,7 +297,13 @@ napi_status napi_delete_element_primjs(napi_env env, napi_value object,
 napi_status napi_define_properties_primjs(
     napi_env env, napi_value object, size_t property_count,
     const napi_property_descriptor* properties) {
-  return env->napi_define_properties(env, object, property_count, properties);
+  CHECK_ENV(env);
+  if (property_count > 0) {
+    CHECK_ARG(env, properties);
+  }
+  CHECK_TO_TYPE(env, object, napi_object, napi_object_expected);
+  return env->napi_define_properties_spec_compliant(env, object, property_count,
+                                                    properties);
 }
 
 napi_status napi_is_array_primjs(napi_env env, napi_value value, bool* result) {

@@ -1157,6 +1157,12 @@ napi_status napi_define_properties(napi_env env, napi_value object,
   return napi_clear_last_error(env);
 }
 
+napi_status napi_define_properties_spec_compliant(
+    napi_env env, napi_value object, size_t property_count,
+    const napi_property_descriptor* properties) {
+  return napi_define_properties(env, object, property_count, properties);
+}
+
 napi_status napi_is_array(napi_env env, napi_value value, bool* result) {
   int result_is = LEPUS_IsArray(env->ctx->ctx, ToJSValue(value));
   CHECK_QJS(env, result_is != -1);

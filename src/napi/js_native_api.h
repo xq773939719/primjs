@@ -505,6 +505,10 @@ struct napi_env__ {
   napi_status (*napi_set_instance_data_spec_compliant)(
       napi_env env, uint64_t key, void* data, napi_finalize finalize_cb,
       void* finalize_hint);
+
+  napi_status (*napi_define_properties_spec_compliant)(
+      napi_env env, napi_value object, size_t property_count,
+      const napi_property_descriptor* properties);
 };
 
 #ifdef ENABLE_CODECACHE
@@ -632,6 +636,7 @@ struct napi_env__ {
   V(close_context_scope)               \
   V(get_own_property_descriptor)       \
   V(set_instance_data_spec_compliant)  \
+  V(define_properties_spec_compliant)  \
   NAPI_ENGINE_CACHE_CALL(V)
 
 // These functions share same implementations across JS engines

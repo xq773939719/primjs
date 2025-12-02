@@ -31,6 +31,10 @@
 
 FOR_EACH_NAPI_ENGINE_CALL(DECLARE_METHOD)
 
+napi_status napi_define_properties_internal(
+    napi_env env, napi_value object, size_t property_count,
+    const napi_property_descriptor* properties, bool spec_compliant);
+
 #undef DECLARE_METHOD
 
 struct napi_callback_info__jsc {
@@ -1034,6 +1038,20 @@ napi_status napi_create_function(napi_env env, const char* utf8name,
   return napi_clear_last_error(env);
 }
 
+napi_status napi_define_properties(napi_env env, napi_value object,
+                                   size_t property_count,
+                                   const napi_property_descriptor* properties) {
+  return napi_define_properties_internal(env, object, property_count,
+                                         properties, false);
+}
+
+napi_status napi_define_properties_spec_compliant(
+    napi_env env, napi_value object, size_t property_count,
+    const napi_property_descriptor* properties) {
+  return napi_define_properties_internal(env, object, property_count,
+                                         properties, true);
+}
+
 napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
                               napi_callback cb, void* data,
                               size_t property_count,
@@ -1306,9 +1324,9 @@ napi_status napi_delete_element(napi_env env, napi_value object, uint32_t index,
   return napi_clear_last_error(env);
 }
 
-napi_status napi_define_properties(napi_env env, napi_value object,
-                                   size_t property_count,
-                                   const napi_property_descriptor* properties) {
+napi_status napi_define_properties_internal(
+    napi_env env, napi_value object, size_t property_count,
+    const napi_property_descriptor* properties, bool spec_compliant) {
   if (property_count > 0) {
     CHECK_ARG(env, properties);
   }
@@ -1349,9 +1367,14 @@ napi_status napi_define_properties(napi_env env, napi_value object,
       CHECK_NAPI(napi_create_object(env, &descriptor));
 
       napi_value configurable{};
-      CHECK_NAPI(napi_get_boolean(
-          env, (p->attributes & napi_configurable) || p->setter != nullptr,
-          &configurable));
+      if (spec_compliant) {
+        CHECK_NAPI(napi_get_boolean(env, (p->attributes & napi_configurable),
+                                    &configurable));
+      } else {
+        CHECK_NAPI(napi_get_boolean(
+            env, (p->attributes & napi_configurable) || p->setter != nullptr,
+            &configurable));
+      }
       CHECK_NAPI(napi_set_named_property(env, descriptor, "configurable",
                                          configurable));
 
@@ -1389,6 +1412,13 @@ napi_status napi_define_properties(napi_env env, napi_value object,
         CHECK_NAPI(napi_create_function(env, prop_name, NAPI_AUTO_LENGTH,
                                         p->method, p->data, &method));
         CHECK_NAPI(napi_set_named_property(env, descriptor, "value", method));
+        if (spec_compliant) {
+          napi_value writable{};
+          CHECK_NAPI(napi_get_boolean(env, (p->attributes & napi_writable),
+                                      &writable));
+          CHECK_NAPI(
+              napi_set_named_property(env, descriptor, "writable", writable));
+        }
       } else {
         RETURN_STATUS_IF_FALSE(env, p->value != nullptr, napi_invalid_arg);
 

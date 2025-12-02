@@ -869,6 +869,12 @@ napi_status napi_define_properties(napi_env env, napi_value object,
   return GET_RETURN_STATUS(env);
 }
 
+napi_status napi_define_properties_spec_compliant(
+    napi_env env, napi_value object, size_t property_count,
+    const napi_property_descriptor* properties) {
+  return napi_define_properties(env, object, property_count, properties);
+}
+
 napi_status napi_create_function(napi_env env, const char* utf8name,
                                  size_t length, napi_callback cb,
                                  void* callback_data, napi_value* result) {

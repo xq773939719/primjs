@@ -2038,14 +2038,25 @@ TEST_F(QjsDebugMethods, TestFailToParse) {
 
 TEST_F(QjsDebugMethods, TestFindDebuggerMagicContent) {
   std::string source =
-      "test js.map //## source sourceURL\n"
+      "test js.map"
+      "// # sourceURL=error.js\n"
+      "//# sourceURL=test_source_url.js\n"
+      "// # sourceMappingURL=error.js.map"
       "//# sourceMappingURL=7778.4f4d5141.js.map";
-  char* result = FindDebuggerMagicContent(ctx_, (char*)source.c_str(),
-                                          (char*)"sourceMappingURL", 0);
-  std::string result_str(result);
-  if (!ctx_->rt->gc_enable) lepus_free(ctx_, result);
-  std::cout << "result: " << result_str << std::endl;
-  ASSERT_TRUE(result_str == "7778.4f4d5141.js.map");
+
+  char* source_map_url = FindDebuggerMagicContent(ctx_, (char*)source.c_str(),
+                                                  (char*)"sourceMappingURL", 0);
+  std::string source_map_str(source_map_url);
+  if (!ctx_->rt->gc_enable) lepus_free(ctx_, source_map_url);
+  std::cout << "sourceMappingURL: " << source_map_str << std::endl;
+  ASSERT_TRUE(source_map_str == "7778.4f4d5141.js.map");
+
+  char* source_url = FindDebuggerMagicContent(ctx_, (char*)source.c_str(),
+                                              (char*)"sourceURL", 0);
+  std::string source_url_str(source_url);
+  if (!ctx_->rt->gc_enable) lepus_free(ctx_, source_url);
+  std::cout << "sourceURL: " << source_url_str << std::endl;
+  ASSERT_TRUE(source_url_str == "test_source_url.js");
 }
 
 static void CheckStatementPause(LEPUSContext* ctx, int32_t line_number_gt,
@@ -2452,6 +2463,100 @@ TEST_F(QjsDebugMethods, TestPauseOnNextStatement) {
     if (!ctx_->rt->gc_enable) {
       LEPUS_FreeCString(ctx_, paused_reason_str);
       LEPUS_FreeValue(ctx_, paused_reason);
+      LEPUS_FreeValue(ctx_, params);
+      LEPUS_FreeValue(ctx_, json);
+    }
+  }
+}
+
+TEST_F(QjsDebugMethods, TestScriptUrl) {
+  auto funcs = GetQJSCallbackFuncs();
+  RegisterQJSDebuggerCallbacks(rt_, funcs.data(), funcs.size());
+
+  std::string debugger_enable =
+      "{\"id\":0,\"method\":\"Debugger.enable\",\"params\":{"
+      "\"maxScriptsCacheSize\":100000000}}";
+  const char* source1 = R"(function test() {
+    let a = 1;
+    console.log(a++);
+  }
+  test();
+  //# sourceURL=test_source_url.js
+  )";
+  const char* source2 = R"(function test() {
+    let a = 1;
+    console.log(a++);
+  }
+  test();
+  //# sourceURL=source1.js
+  )";
+
+  // Test case 1: Check URL when filename is specified
+  QjsDebugQueue::GetSendMessageQueue().push(debugger_enable);
+  LEPUSValue ret = LEPUS_Eval(ctx_, source1, strlen(source1), "source1.js",
+                              LEPUS_EVAL_TYPE_GLOBAL);
+  if (!ctx_->rt->gc_enable) LEPUS_FreeValue(ctx_, ret);
+  // Pop response of Debugger.enable
+  QjsDebugQueue::GetReceiveMessageQueue().pop();
+  std::string script_parsed_msg =
+      QjsDebugQueue::GetReceiveMessageQueue().front();
+  QjsDebugQueue::GetReceiveMessageQueue().pop();
+  {
+    LEPUSValue json = LEPUS_ParseJSON(ctx_, script_parsed_msg.c_str(),
+                                      script_parsed_msg.length(), "");
+    HandleScope func_scope(ctx_, &json, HANDLE_TYPE_LEPUS_VALUE);
+    LEPUSValue params = LEPUS_GetPropertyStr(ctx_, json, "params");
+    LEPUSValue url = LEPUS_GetPropertyStr(ctx_, params, "url");
+    const char* url_str = LEPUS_ToCString(ctx_, url);
+    ASSERT_EQ(std::string(url_str), "source1.js");
+    if (!ctx_->rt->gc_enable) {
+      LEPUS_FreeCString(ctx_, url_str);
+      LEPUS_FreeValue(ctx_, url);
+      LEPUS_FreeValue(ctx_, params);
+      LEPUS_FreeValue(ctx_, json);
+    }
+  }
+
+  // Test case 2: Check URL when no filename is specified, but sourceURL is
+  // present in the script
+  ret = LEPUS_Eval(ctx_, source1, strlen(source1), "", LEPUS_EVAL_TYPE_GLOBAL);
+  if (!ctx_->rt->gc_enable) LEPUS_FreeValue(ctx_, ret);
+  script_parsed_msg = QjsDebugQueue::GetReceiveMessageQueue().front();
+  QjsDebugQueue::GetReceiveMessageQueue().pop();
+  {
+    LEPUSValue json = LEPUS_ParseJSON(ctx_, script_parsed_msg.c_str(),
+                                      script_parsed_msg.length(), "");
+    HandleScope func_scope(ctx_, &json, HANDLE_TYPE_LEPUS_VALUE);
+    LEPUSValue params = LEPUS_GetPropertyStr(ctx_, json, "params");
+    LEPUSValue url = LEPUS_GetPropertyStr(ctx_, params, "url");
+    const char* url_str = LEPUS_ToCString(ctx_, url);
+    ASSERT_EQ(std::string(url_str), "test_source_url.js");
+    if (!ctx_->rt->gc_enable) {
+      LEPUS_FreeCString(ctx_, url_str);
+      LEPUS_FreeValue(ctx_, url);
+      LEPUS_FreeValue(ctx_, params);
+      LEPUS_FreeValue(ctx_, json);
+    }
+  }
+
+  // Test case 3: Check URL when filename is specified as a parameter and
+  // sourceURL is present in the script; filename should take precedence
+  ret = LEPUS_Eval(ctx_, source2, strlen(source2), "source2.js",
+                   LEPUS_EVAL_TYPE_GLOBAL);
+  if (!ctx_->rt->gc_enable) LEPUS_FreeValue(ctx_, ret);
+  script_parsed_msg = QjsDebugQueue::GetReceiveMessageQueue().front();
+  QjsDebugQueue::GetReceiveMessageQueue().pop();
+  {
+    LEPUSValue json = LEPUS_ParseJSON(ctx_, script_parsed_msg.c_str(),
+                                      script_parsed_msg.length(), "");
+    HandleScope func_scope(ctx_, &json, HANDLE_TYPE_LEPUS_VALUE);
+    LEPUSValue params = LEPUS_GetPropertyStr(ctx_, json, "params");
+    LEPUSValue url = LEPUS_GetPropertyStr(ctx_, params, "url");
+    const char* url_str = LEPUS_ToCString(ctx_, url);
+    ASSERT_EQ(std::string(url_str), "source2.js");
+    if (!ctx_->rt->gc_enable) {
+      LEPUS_FreeCString(ctx_, url_str);
+      LEPUS_FreeValue(ctx_, url);
       LEPUS_FreeValue(ctx_, params);
       LEPUS_FreeValue(ctx_, json);
     }

@@ -591,14 +591,21 @@ QJS_HIDE char *DebuggerSetScriptHash(LEPUSContext *ctx, const char *src,
 }
 
 QJS_STATIC void SetScriptUrl(LEPUSContext *ctx, const char *filename,
-                             LEPUSScriptSource *script, char *source_url) {
+                             LEPUSScriptSource *script) {
   script->url = NULL;
   if (*filename) {
     script->url = lepus_strdup(ctx, filename, ALLOC_TAG_WITHOUT_PTR);
   } else if (script->source) {
-    script->url = source_url
-                      ? lepus_strdup(ctx, source_url, ALLOC_TAG_WITHOUT_PTR)
-                      : lepus_strdup(ctx, "", ALLOC_TAG_WITHOUT_PTR);
+    char *source_url = FindDebuggerMagicContent(ctx, (char *)script->source,
+                                                (char *)"sourceURL", 0);
+    if (source_url) {
+      script->url = lepus_strdup(ctx, source_url, ALLOC_TAG_WITHOUT_PTR);
+      if (!ctx->gc_enable) {
+        lepus_free(ctx, source_url);
+      }
+    } else {
+      script->url = lepus_strdup(ctx, "", ALLOC_TAG_WITHOUT_PTR);
+    }
   }
   return;
 }
@@ -633,19 +640,6 @@ QJS_STATIC void SendParseScriptNotification(LEPUSContext *ctx,
 
 QJS_STATIC bool IsDebuggerFile(const char *filename) {
   return filename && strcmp(filename, "quickjsTriggerTimer.js") != 0;
-}
-
-QJS_STATIC LEPUSScriptSource *FindDebuggerScript(LEPUSContext *ctx,
-                                                 char *source_url) {
-  struct list_head *el, *el1;
-  list_for_each_safe(el, el1, &ctx->debugger_info->script_list) {
-    LEPUSScriptSource *script = list_entry(el, LEPUSScriptSource, link);
-    if (script && script->url && source_url &&
-        strcmp(script->url, source_url) == 0) {
-      return script;
-    }
-  }
-  return NULL;
 }
 
 // get view id from filename
@@ -689,22 +683,10 @@ QJS_HIDE void DebuggerParseScript(LEPUSContext *ctx, const char *input,
                                   int32_t err, int start_line_number) {
   auto *debug_info = ctx->debugger_info;
   if (!debug_info) return;
-  char *source_url = NULL;
   LEPUSScriptSource *script = NULL;
   HandleScope func_scope{ctx};
-  if (input) {
-    source_url =
-        FindDebuggerMagicContent(ctx, (char *)input, (char *)"sourceURL", 0);
 
-    func_scope.PushHandle(source_url, HANDLE_TYPE_DIR_HEAP_OBJ);
-    if (source_url) {
-      // if the script is already in script list, do not need to create new
-      // script
-      script = FindDebuggerScript(ctx, source_url);
-    }
-  }
-
-  if (!script && IsDebuggerFile(filename)) {
+  if (IsDebuggerFile(filename)) {
     script = static_cast<LEPUSScriptSource *>(lepus_mallocz(
         ctx, sizeof(LEPUSScriptSource), ALLOC_TAG_LEPUSScriptSource));
     func_scope.PushHandle(script, HANDLE_TYPE_DIR_HEAP_OBJ);
@@ -718,7 +700,7 @@ QJS_HIDE void DebuggerParseScript(LEPUSContext *ctx, const char *input,
         memcpy(script->source, input, input_len + 1);
       }
       script->end_line = end_line_num + start_line_number;
-      SetScriptUrl(ctx, filename, script, source_url);
+      SetScriptUrl(ctx, filename, script);
       SetScriptSourceMappingUrl(ctx, script);
       SetScriptHash(ctx, script);
       debug_info->script_num++;
@@ -740,9 +722,6 @@ QJS_HIDE void DebuggerParseScript(LEPUSContext *ctx, const char *input,
     if (!(script_url && strcmp(script_url, "<input>") == 0)) {
       SendParseScriptNotification(ctx, script, err, view_id);
     }
-  }
-  if (!ctx->gc_enable) {
-    lepus_free(ctx, source_url);
   }
   return;
 }

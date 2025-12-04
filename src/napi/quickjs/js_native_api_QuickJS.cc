@@ -718,12 +718,11 @@ static __attribute__((unused)) std::string GetExceptionMessage(
   }
   return ret;
 }
-
-napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
-                              napi_callback cb, void* data,
-                              size_t property_count,
-                              const napi_property_descriptor* properties,
-                              napi_class super_class, napi_class* result) {
+napi_status napi_define_class_internal(
+    napi_env env, const char* utf8name, size_t length, napi_callback cb,
+    void* data, size_t property_count,
+    const napi_property_descriptor* properties, napi_class super_class,
+    napi_class* result, bool spec_compliant) {
   NAPIHandleScope scope(env, env->ctx->ctx, reset_napi_env);
 
   LEPUSContext* ctx = env->ctx->ctx;
@@ -739,6 +738,7 @@ napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
     void* data;
     LEPUSValue proto;
     qjsimpl::NAPIPersistent p_proto;
+    bool spec_compliant;
     ~ClassData() { p_proto.Reset(true); }
   };
 
@@ -746,8 +746,10 @@ napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
   qjsimpl::Value ctor_magic(ctx, qjsimpl::External::Create(env, &ctor_info));
   CHECK_QJS(env, !LEPUS_IsException(ctor_magic));
 
-  ClassData* ctor_magic_data =
-      new ClassData{.cb = cb, .data = data, .proto = proto.dup()};
+  ClassData* ctor_magic_data = new ClassData{.cb = cb,
+                                             .data = data,
+                                             .proto = proto.dup(),
+                                             .spec_compliant = spec_compliant};
   if (LEPUS_IsGCMode(env->ctx->ctx)) {
     ctor_magic_data->p_proto.Reset(env, ctor_magic_data->proto, nullptr,
                                    env->ctx->ctx, true);
@@ -813,6 +815,10 @@ napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
         auto result = CallJSFunctionWithNAPI(env, class_data->cb, &cbinfo);
         if (LEPUS_IsUndefined(result)) {
           LOGI("napi callback return undefined");
+        }
+        if (class_data->spec_compliant && !LEPUS_IsException(result) &&
+            !LEPUS_IsObject(result)) {
+          return this_val;
         }
         return result;
       },
@@ -889,6 +895,26 @@ napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
   *result = new napi_class__qjs(ctx, proto.move(), constructor.move());
 
   return napi_clear_last_error(env);
+}
+
+napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
+                              napi_callback cb, void* data,
+                              size_t property_count,
+                              const napi_property_descriptor* properties,
+                              napi_class super_class, napi_class* result) {
+  return napi_define_class_internal(env, utf8name, length, cb, data,
+                                    property_count, properties, super_class,
+                                    result, false);
+}
+
+napi_status napi_define_class_spec_compliant(
+    napi_env env, const char* utf8name, size_t length, napi_callback cb,
+    void* data, size_t property_count,
+    const napi_property_descriptor* properties, napi_class super_class,
+    napi_class* result) {
+  return napi_define_class_internal(env, utf8name, length, cb, data,
+                                    property_count, properties, super_class,
+                                    result, true);
 }
 
 napi_status napi_release_class(napi_env env, napi_class clazz) {

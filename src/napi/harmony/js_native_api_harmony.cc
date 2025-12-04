@@ -819,6 +819,15 @@ static napi_status napi_define_class(napi_env env, const char *utf8name,
   return napi_clear_last_error(env);
 }
 
+static napi_status napi_define_class_spec_compliant(
+    napi_env env, const char *utf8name, size_t length,
+    napi_callback constructor, void *data, size_t property_count,
+    const napi_property_descriptor *properties, napi_class super_class,
+    napi_class *result) {
+  return napi_define_class(env, utf8name, length, constructor, data,
+                           property_count, properties, super_class, result);
+}
+
 static napi_status napi_release_class(napi_env env, napi_class clazz) {
   delete reinterpret_cast<napi_class__harmony *>(clazz);
   return napi_ok;

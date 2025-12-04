@@ -1052,11 +1052,11 @@ napi_status napi_define_properties_spec_compliant(
                                          properties, true);
 }
 
-napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
-                              napi_callback cb, void* data,
-                              size_t property_count,
-                              const napi_property_descriptor* properties,
-                              napi_class super_class, napi_class* result) {
+napi_status napi_define_class_internal(
+    napi_env env, const char* utf8name, size_t length, napi_callback cb,
+    void* data, size_t property_count,
+    const napi_property_descriptor* properties, napi_class super_class,
+    napi_class* result, bool spec_compliant) {
   CHECK_NAPI(jscimpl::Constructor::Create(env, utf8name, length, cb, data,
                                           super_class, result));
 
@@ -1086,19 +1086,40 @@ napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
   }
 
   if (staticPropertyCount > 0) {
-    CHECK_NAPI(napi_define_properties(
-        env, constructor, staticDescriptors.size(), staticDescriptors.data()));
+    CHECK_NAPI(napi_define_properties_internal(
+        env, constructor, staticDescriptors.size(), staticDescriptors.data(),
+        spec_compliant));
   }
 
   if (instancePropertyCount > 0) {
     napi_value prototype = ToNapi((*result)->_proto);
 
-    CHECK_NAPI(napi_define_properties(env, prototype,
-                                      instanceDescriptors.size(),
-                                      instanceDescriptors.data()));
+    CHECK_NAPI(napi_define_properties_internal(
+        env, prototype, instanceDescriptors.size(), instanceDescriptors.data(),
+        spec_compliant));
   }
 
   return napi_clear_last_error(env);
+}
+
+napi_status napi_define_class_spec_compliant(
+    napi_env env, const char* utf8name, size_t length, napi_callback cb,
+    void* data, size_t property_count,
+    const napi_property_descriptor* properties, napi_class super_class,
+    napi_class* result) {
+  return napi_define_class_internal(env, utf8name, length, cb, data,
+                                    property_count, properties, super_class,
+                                    result, true);
+}
+
+napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
+                              napi_callback cb, void* data,
+                              size_t property_count,
+                              const napi_property_descriptor* properties,
+                              napi_class super_class, napi_class* result) {
+  return napi_define_class_internal(env, utf8name, length, cb, data,
+                                    property_count, properties, super_class,
+                                    result, false);
 }
 
 napi_status napi_release_class(napi_env env, napi_class clazz) {

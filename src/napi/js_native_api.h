@@ -509,6 +509,12 @@ struct napi_env__ {
   napi_status (*napi_define_properties_spec_compliant)(
       napi_env env, napi_value object, size_t property_count,
       const napi_property_descriptor* properties);
+
+  napi_status (*napi_define_class_spec_compliant)(
+      napi_env env, const char* utf8name, size_t length,
+      napi_callback constructor, void* data, size_t property_count,
+      const napi_property_descriptor* properties, napi_class super_class,
+      napi_class* result);
 };
 
 #ifdef ENABLE_CODECACHE
@@ -637,6 +643,7 @@ struct napi_env__ {
   V(get_own_property_descriptor)       \
   V(set_instance_data_spec_compliant)  \
   V(define_properties_spec_compliant)  \
+  V(define_class_spec_compliant)       \
   NAPI_ENGINE_CACHE_CALL(V)
 
 // These functions share same implementations across JS engines

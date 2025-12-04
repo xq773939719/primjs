@@ -349,28 +349,35 @@ napi_status napi_get_new_target_primjs(napi_env env, napi_callback_info cbinfo,
   return env->napi_get_new_target(env, cbinfo, result);
 }
 
-void DeleteClass(napi_env env, void* finalize_data, void* finalize_hint) {
-  env->napi_release_class(env, static_cast<napi_class>(finalize_data));
-}
-
 napi_status napi_define_class_primjs(napi_env env, const char* utf8name,
                                      size_t length, napi_callback constructor,
                                      void* data, size_t property_count,
                                      const napi_property_descriptor* properties,
                                      napi_value* result) {
+  CHECK_ENV(env);
+  CHECK_ARG(env, result);
+  CHECK_ARG(env, constructor);
+
+  if (property_count > 0) {
+    CHECK_ARG(env, properties);
+  }
+  RETURN_STATUS_IF_FALSE(
+      env, utf8name && (length == NAPI_AUTO_LENGTH || length <= INT_MAX),
+      napi_invalid_arg);
   napi_class class_result = nullptr;
-  napi_status status = env->napi_define_class(
+  napi_status status = env->napi_define_class_spec_compliant(
       env, utf8name, length, constructor, data, property_count, properties,
       nullptr, &class_result);
-  if (!class_result || status != napi_ok) {
+  if (!class_result) {
+    return status;
+  }
+  if (status != napi_ok) {
+    env->napi_release_class(env, class_result);
     return status;
   }
   status = env->napi_class_get_function(env, class_result, result);
-  if (status != napi_ok) {
-    return status;
-  }
-  return env->napi_add_finalizer(env, *result, class_result, DeleteClass,
-                                 nullptr, nullptr);
+  env->napi_release_class(env, class_result);
+  return status;
 }
 
 napi_status napi_wrap_primjs(napi_env env, napi_value js_object,

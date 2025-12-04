@@ -922,6 +922,15 @@ struct Clazz {
 };
 }  // namespace v8impl
 
+napi_status napi_define_class_spec_compliant(
+    napi_env env, const char* utf8name, size_t length, napi_callback cb,
+    void* data, size_t property_count,
+    const napi_property_descriptor* properties, napi_class super_class,
+    napi_class* result) {
+  return napi_define_class(env, utf8name, length, cb, data, property_count,
+                           properties, super_class, result);
+}
+
 napi_status napi_define_class(napi_env env, const char* utf8name, size_t length,
                               napi_callback constructor, void* callback_data,
                               size_t property_count,

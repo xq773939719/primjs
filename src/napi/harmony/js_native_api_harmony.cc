@@ -734,6 +734,12 @@ static napi_status napi_call_function(napi_env env, napi_value recv,
   return napi_clear_last_error(env);
 }
 
+static napi_status napi_call_function_spec_compliant(
+    napi_env env, napi_value recv, napi_value func, size_t argc,
+    const napi_value *argv, napi_value *result) {
+  return napi_call_function(env, recv, func, argc, argv, result);
+}
+
 static napi_status napi_new_instance(napi_env env, napi_value constructor,
                                      size_t argc, const napi_value *argv,
                                      napi_value *result) {

@@ -1515,6 +1515,13 @@ napi_status napi_call_function(napi_env env, napi_value recv, napi_value func,
   return napi_clear_last_error(env);
 }
 
+napi_status napi_call_function_spec_compliant(napi_env env, napi_value recv,
+                                              napi_value func, size_t argc,
+                                              const napi_value* argv,
+                                              napi_value* result) {
+  return napi_call_function(env, recv, func, argc, argv, result);
+}
+
 napi_status napi_get_global(napi_env env, napi_value* result) {
   *result = env->ctx->CreateHandle(LEPUS_GetGlobalObject(env->ctx->ctx));
   return napi_clear_last_error(env);

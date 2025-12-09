@@ -324,7 +324,15 @@ napi_status napi_call_function_primjs(napi_env env, napi_value recv,
                                       napi_value func, size_t argc,
                                       const napi_value* argv,
                                       napi_value* result) {
-  return env->napi_call_function(env, recv, func, argc, argv, result);
+  CHECK_ENV(env);
+  CHECK_ARG(env, recv);
+  if (argc > 0) {
+    CHECK_ARG(env, argv);
+  }
+  CHECK_ARG(env, func);
+  CHECK_TO_TYPE(env, func, napi_function, napi_invalid_arg);
+  return env->napi_call_function_spec_compliant(env, recv, func, argc, argv,
+                                                result);
 }
 
 napi_status napi_new_instance_primjs(napi_env env, napi_value constructor,

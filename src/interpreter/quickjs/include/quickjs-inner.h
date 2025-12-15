@@ -676,6 +676,7 @@ typedef enum OPCodeEnum {
 } OPCodeEnum;
 
 struct FinalizationRegistryContext;
+constexpr size_t kFunctionShapeSize = 2;
 
 struct LEPUSContext {
   // <primjs begin>
@@ -693,6 +694,7 @@ struct LEPUSContext {
   int binary_object_size;
 
   JSShape *array_shape; /* initial shape for Array objects */
+  JSShape *function_shape[kFunctionShapeSize];
 
   LEPUSValue *class_proto;
   LEPUSValue function_proto;

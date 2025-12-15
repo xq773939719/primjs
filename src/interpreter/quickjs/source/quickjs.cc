@@ -2010,6 +2010,10 @@ void LEPUS_FreeContext(LEPUSContext *ctx) {
 
   js_free_shape_null(ctx->rt, ctx->array_shape);
 
+  for (size_t i = 0; i < kFunctionShapeSize; ++i) {
+    js_free_shape_null(ctx->rt, ctx->function_shape[i]);
+  }
+
   list_del(&ctx->link);
 
   lepus_free(ctx, ctx->lynx_target_sdk_version);
@@ -47939,6 +47943,26 @@ QJS_STATIC void JS_AddIntrinsicBigInt(LEPUSContext *ctx) {
   return;
 }
 
+static void JS_InitFunctionShape(LEPUSContext *ctx) {
+  LEPUSObject *proto = LEPUS_VALUE_GET_OBJ(ctx->function_proto);
+  // 1. The length property
+  auto *shape = js_new_shape2(ctx, proto, JS_PROP_INITIAL_HASH_SIZE,
+                              JS_PROP_INITIAL_SIZE);
+  add_shape_property(ctx, &shape, nullptr, JS_ATOM_length,
+                     LEPUS_PROP_CONFIGURABLE);
+  ctx->function_shape[0] = shape;
+
+  // length + name properties
+  shape = js_new_shape2(ctx, proto, JS_PROP_INITIAL_HASH_SIZE,
+                        JS_PROP_INITIAL_SIZE);
+  add_shape_property(ctx, &shape, nullptr, JS_ATOM_length,
+                     LEPUS_PROP_CONFIGURABLE);
+  add_shape_property(ctx, &shape, nullptr, JS_ATOM_name,
+                     LEPUS_PROP_CONFIGURABLE);
+  ctx->function_shape[1] = shape;
+  return;
+}
+
 /* Minimum amount of objects to be able to compile code and display
    error messages. No JSAtom should be allocated by this function. */
 QJS_STATIC void JS_AddIntrinsicBasicObjects(LEPUSContext *ctx) {
@@ -47955,6 +47979,8 @@ QJS_STATIC void JS_AddIntrinsicBasicObjects(LEPUSContext *ctx) {
       JS_NewCFunction3(ctx, js_function_proto, "", 0, LEPUS_CFUNC_generic, 0,
                        ctx->class_proto[JS_CLASS_OBJECT],
                        countof(js_function_proto_funcs) + 3 + 2);
+  JS_InitFunctionShape(ctx);
+
   ctx->class_proto[JS_CLASS_BYTECODE_FUNCTION] =
       LEPUS_DupValue(ctx, ctx->function_proto);
   ctx->global_obj = JS_NewObjectProtoClassAlloc(

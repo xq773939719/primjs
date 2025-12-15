@@ -24887,6 +24887,25 @@ QJS_STATIC void JS_AddIntrinsicBigInt(LEPUSContext *ctx) {
                      js_bigint_proto_funcs, countof(js_bigint_proto_funcs), 0);
 }
 
+static void JS_InitFunctionShape(LEPUSContext *ctx) {
+  LEPUSObject *proto = LEPUS_VALUE_GET_OBJ(ctx->function_proto);
+  // 1. The length property
+  auto *shape = js_new_shape2(ctx, proto, JS_PROP_INITIAL_HASH_SIZE,
+                              JS_PROP_INITIAL_SIZE);
+  add_shape_property(ctx, &shape, nullptr, JS_ATOM_length,
+                     LEPUS_PROP_CONFIGURABLE);
+  ctx->function_shape[0] = shape;
+  // length + name
+  shape = js_new_shape2(ctx, proto, JS_PROP_INITIAL_HASH_SIZE,
+                        JS_PROP_INITIAL_SIZE);
+  add_shape_property(ctx, &shape, nullptr, JS_ATOM_length,
+                     LEPUS_PROP_CONFIGURABLE);
+  add_shape_property(ctx, &shape, nullptr, JS_ATOM_name,
+                     LEPUS_PROP_CONFIGURABLE);
+  ctx->function_shape[1] = shape;
+  return;
+}
+
 /* Minimum amount of objects to be able to compile code and display
    error messages. No JSAtom should be allocated by this function. */
 QJS_STATIC void JS_AddIntrinsicBasicObjects_GC(LEPUSContext *ctx) {
@@ -24905,6 +24924,9 @@ QJS_STATIC void JS_AddIntrinsicBasicObjects_GC(LEPUSContext *ctx) {
       JS_NewCFunction3(ctx, js_function_proto, "", 0, LEPUS_CFUNC_generic, 0,
                        ctx->class_proto[JS_CLASS_OBJECT],
                        countof(js_function_proto_funcs) + 3 + 2);
+
+  JS_InitFunctionShape(ctx);
+
   ctx->class_proto[JS_CLASS_BYTECODE_FUNCTION] = ctx->function_proto;
   ctx->class_proto[JS_CLASS_ERROR] = JS_NewObject_GC(ctx);
   ctx->global_obj = JS_NewObjectProtoClassAlloc(
@@ -28955,6 +28977,11 @@ void Visitor::ScanContext(LEPUSContext *ctx) noexcept {
   VisitRootLEPUSValue(ctx->function_proto, local_idx);
   if (ctx->array_shape) {
     VisitRootHeapObj(get_alloc_from_shape(ctx->array_shape), local_idx);
+  }
+
+  for (size_t i = 0; i < kFunctionShapeSize; ++i) {
+    if (ctx->function_shape[i] == nullptr) continue;
+    VisitRootHeapObj(get_alloc_from_shape(ctx->function_shape[i]), local_idx);
   }
   // napi scope
   NAPIHandleScope *cur_scope = ctx->napi_scope;

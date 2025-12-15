@@ -1003,7 +1003,7 @@ b.EQ Label_80
 .word 0xf1004b3f
 b.NE Label_81
 Label_80:
-.word 0xf9406660
+.word 0xf9406e60
 b Label_82
 Label_81:
 .word 0xf85b83b1
@@ -1057,7 +1057,7 @@ b.EQ Label_87
 .word 0xf1004b3f
 b.NE Label_88
 Label_87:
-.word 0xf9406660
+.word 0xf9406e60
 b Label_89
 Label_88:
 .word 0xf85b83b1
@@ -4518,7 +4518,7 @@ Label_308:
 b __exception_handler_entry
 b Label_307
 Label_306:
-.word 0xf9406679
+.word 0xf9406e79
 Label_307:
 Label_305:
 .word 0xb27103e4
@@ -4589,7 +4589,7 @@ Label_313:
 b __exception_handler_entry
 b Label_312
 Label_311:
-.word 0xf9406679
+.word 0xf9406e79
 Label_312:
 Label_310:
 .word 0xb27103e4
@@ -12182,7 +12182,7 @@ _dispatch_table_1_153:
 .word 0xf85b83b1
 .word 0xf9002234
 .word 0xb84012c8
-.word 0xf9406661
+.word 0xf9406e61
 .word 0xd2800003
 .word 0xf85b83b1
 .word 0xf9002234
@@ -12217,7 +12217,7 @@ _dispatch_table_2_153:
 .global _dispatch_table_0_153
 _dispatch_table_0_153:
 .word 0xb84012c8
-.word 0xf9406661
+.word 0xf9406e61
 .word 0xd2800003
 .word 0xf85b83b1
 .word 0xf9002234

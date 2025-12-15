@@ -8246,6 +8246,13 @@ JSProperty *add_property(LEPUSContext *ctx, LEPUSObject *p, JSAtom prop,
       new_sh = js_clone_shape(ctx, sh);
       if (!new_sh) return NULL;
       /* hash the cloned shape */
+      // resize shape_array
+      {
+        auto *rt = ctx->rt;
+        if (2 * (rt->shape_hash_count + 1) > rt->shape_hash_size) {
+          resize_shape_hash(rt, rt->shape_hash_bits + 1);
+        }
+      }
       new_sh->is_hashed = TRUE;
       js_shape_hash_link(ctx->rt, new_sh);
       js_free_shape(ctx->rt, p->shape);
@@ -47951,10 +47958,10 @@ QJS_STATIC void JS_AddIntrinsicBasicObjects(LEPUSContext *ctx) {
   ctx->class_proto[JS_CLASS_BYTECODE_FUNCTION] =
       LEPUS_DupValue(ctx, ctx->function_proto);
   ctx->global_obj = JS_NewObjectProtoClassAlloc(
-      ctx, ctx->class_proto[JS_CLASS_OBJECT], JS_CLASS_OBJECT, 64);
+      ctx, ctx->class_proto[JS_CLASS_OBJECT], JS_CLASS_OBJECT, 256);
 
   ctx->global_var_obj =
-      JS_NewObjectProtoClassAlloc(ctx, LEPUS_NULL, JS_CLASS_OBJECT, 16);
+      JS_NewObjectProtoClassAlloc(ctx, LEPUS_NULL, JS_CLASS_OBJECT, 256);
 
   /* Error */
   ft.generic_magic = js_error_constructor;

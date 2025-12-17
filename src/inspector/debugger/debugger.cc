@@ -1118,8 +1118,11 @@ QJS_STATIC LEPUSValue ConsoleCount(LEPUSContext *ctx, LEPUSValueConst this_val,
     HandleScope func_scope(ctx);
     const char *label = "default";
     if (argc > 0) {
-      label = LEPUS_ToCString(ctx, argv[0]);
-      func_scope.PushHandle(&label, HANDLE_TYPE_CSTRING);
+      const char *cstr = LEPUS_ToCString(ctx, argv[0]);
+      if (cstr) {
+        label = cstr;
+        func_scope.PushHandle(&label, HANDLE_TYPE_CSTRING);
+      }
     }
 
     info->count_map[label]++;
@@ -1148,8 +1151,11 @@ QJS_STATIC LEPUSValue ConsoleCountReset(LEPUSContext *ctx,
     HandleScope func_scope(ctx);
     const char *label = "default";
     if (argc > 0) {
-      label = LEPUS_ToCString(ctx, argv[0]);
-      func_scope.PushHandle(&label, HANDLE_TYPE_CSTRING);
+      const char *cstr = LEPUS_ToCString(ctx, argv[0]);
+      if (cstr) {
+        label = cstr;
+        func_scope.PushHandle(&label, HANDLE_TYPE_CSTRING);
+      }
     }
 
     if (info->count_map.find(label) == info->count_map.end()) {
@@ -1182,8 +1188,11 @@ QJS_STATIC LEPUSValue ConsoleTime(LEPUSContext *ctx, LEPUSValueConst this_val,
     HandleScope func_scope(ctx);
     const char *timerName = "default";
     if (argc > 0) {
-      timerName = LEPUS_ToCString(ctx, argv[0]);
-      func_scope.PushHandle(&timerName, HANDLE_TYPE_CSTRING);
+      const char *cstr = LEPUS_ToCString(ctx, argv[0]);
+      if (cstr) {
+        timerName = cstr;
+        func_scope.PushHandle(&timerName, HANDLE_TYPE_CSTRING);
+      }
     }
 
     if (info->timers.find(timerName) != info->timers.end()) {
@@ -1218,8 +1227,11 @@ QJS_STATIC LEPUSValue ConsoleTimeLog(LEPUSContext *ctx,
     HandleScope func_scope(ctx);
     const char *timerName = "default";
     if (argc > 0) {
-      timerName = LEPUS_ToCString(ctx, argv[0]);
-      func_scope.PushHandle(&timerName, HANDLE_TYPE_CSTRING);
+      const char *cstr = LEPUS_ToCString(ctx, argv[0]);
+      if (cstr) {
+        timerName = cstr;
+        func_scope.PushHandle(&timerName, HANDLE_TYPE_CSTRING);
+      }
     }
 
     auto it = info->timers.find(timerName);
@@ -1268,8 +1280,11 @@ QJS_STATIC LEPUSValue ConsoleTimeEnd(LEPUSContext *ctx,
     HandleScope func_scope(ctx);
     const char *timerName = "default";
     if (argc > 0) {
-      timerName = LEPUS_ToCString(ctx, argv[0]);
-      func_scope.PushHandle(&timerName, HANDLE_TYPE_CSTRING);
+      const char *cstr = LEPUS_ToCString(ctx, argv[0]);
+      if (cstr) {
+        timerName = cstr;
+        func_scope.PushHandle(&timerName, HANDLE_TYPE_CSTRING);
+      }
     }
 
     auto it = info->timers.find(timerName);

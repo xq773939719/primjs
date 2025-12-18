@@ -282,7 +282,7 @@ class Persistent {
   std::unique_ptr<WeakInfo> _weak_info;
 };
 
-enum class NativeType { Constructor, External, Function, Wrapper };
+enum class NativeType { Constructor, External, Function, CustomClass };
 
 class NativeInfo final {
  public:
@@ -312,6 +312,8 @@ class NativeInfo final {
   void* Data() const { return _data; }
 
   NativeType Type() const { return _type; }
+
+  static NativeInfo* EnsureNativeInfo(napi_env env, JSObjectRef obj);
 
  private:
   const napi_env _env;
@@ -638,6 +640,35 @@ class External {
   }
 };
 
+NativeInfo* NativeInfo::EnsureNativeInfo(napi_env env, JSObjectRef obj) {
+  NativeInfo* info;
+  JSValueRef exception = nullptr;
+
+  static const JSStringRef magic =
+      JSStringCreateWithUTF8CString("@#finalizerInfoMagicProp@#");
+
+  JSValueRef info_holder =
+      JSObjectGetProperty(env->ctx->context, obj, magic, &exception);
+  assert(exception == nullptr);
+
+  if (JSValueIsUndefined(env->ctx->context, info_holder)) {
+    napi_value new_info_holder;
+    info = External::Create(env, &new_info_holder);
+
+    JSObjectSetProperty(
+        env->ctx->context, obj, magic, ToJSValue(new_info_holder),
+        kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontEnum |
+            kJSPropertyAttributeDontDelete,
+        &exception);
+    assert(exception == nullptr);
+  } else {
+    info =
+        static_cast<NativeInfo*>(JSObjectGetPrivate(ToJSObject(info_holder)));
+  }
+  assert(exception == nullptr);
+  return info;
+}
+
 inline void Persistent::SetWeak(void* data, std::function<void(void*)> cb) {
   assert(_value);
   if (_weak_info) {
@@ -665,29 +696,7 @@ inline void Persistent::ResetWeakInfo() {
 inline NativeInfo* Persistent::_get_native_info() {
   assert(_value);
   if (!_native_info) {
-    static const JSStringRef magic = JSStringCreateWithUTF8CString("@#hmhm@#");
-
-    JSValueRef exception = nullptr;
-
-    JSValueRef finalizer =
-        JSObjectGetProperty(_env->ctx->context, _value, magic, &exception);
-    assert(exception == nullptr);
-
-    if (JSValueIsUndefined(_env->ctx->context, finalizer)) {
-      napi_value finalize_obj;
-      _native_info = External::Create(_env, &finalize_obj);
-
-      JSObjectSetProperty(
-          _env->ctx->context, _value, magic, ToJSValue(finalize_obj),
-          kJSPropertyAttributeReadOnly | kJSPropertyAttributeDontEnum |
-              kJSPropertyAttributeDontDelete,
-          &exception);
-    } else {
-      _native_info =
-          static_cast<NativeInfo*>(JSObjectGetPrivate(ToJSObject(finalizer)));
-    }
-
-    assert(exception == nullptr);
+    _native_info = NativeInfo::EnsureNativeInfo(_env, _value);
   }
   return _native_info;
 }
@@ -704,7 +713,7 @@ JSStringRef getPrototypeString() {
 }
 }  // namespace
 
-class Wrapper {
+class CustomClass {
  public:
   static JSObjectRef Create(napi_env env) {
     static std::once_flag once_flag;
@@ -715,12 +724,12 @@ class Wrapper {
       wrapperClassDef.version = 0;
       wrapperClassDef.attributes = kJSClassAttributeNoAutomaticPrototype;
       wrapperClassDef.className = "Object";
-      wrapperClassDef.finalize = Wrapper::Finalize;
+      wrapperClassDef.finalize = CustomClass::Finalize;
 
       wrapperClass = JSClassCreate(&wrapperClassDef);
     });
 
-    NativeInfo* info{new NativeInfo(env, NativeType::Wrapper)};
+    NativeInfo* info{new NativeInfo(env, NativeType::CustomClass)};
     return JSObjectMake(env->ctx->context, wrapperClass, info);
   }
 
@@ -868,7 +877,7 @@ class Constructor {
     napi_env env = info->Env();
     napi_clear_last_error(env);
 
-    JSObjectRef instance = Wrapper::Create(env);
+    JSObjectRef instance = CustomClass::Create(env);
 
     JSObjectSetPrototype(ctx, instance, cons_data->_proto);
 
@@ -943,21 +952,35 @@ enum WrapType { retrievable, anonymous };
 template <WrapType wrap_type>
 inline napi_status Wrap(napi_env env, napi_value js_object, void* native_object,
                         napi_finalize finalize_cb, void* finalize_hint,
-                        napi_ref* result) {
+                        napi_ref* result, bool spec_compliant) {
   // Omit NAPI_PREAMBLE and GET_RETURN_STATUS because V8 calls here cannot throw
   // JS exceptions.
+  CHECK_ARG(env, js_object);
   JSValueRef value = ToJSValue(js_object);
-  //   RETURN_STATUS_IF_FALSE(env, JSValueIsObject(env->ctx->context, value),
-  //                          napi_invalid_arg);
+  if (!spec_compliant) {
+    // If spec_compliant is false, preserve legacy behavior: only objects whose
+    // NativeType is CustomClass can call napi_wrap.
+    if (wrap_type == retrievable) {
+      NativeInfo* legacy_info =
+          static_cast<NativeInfo*>(JSObjectGetPrivate(ToJSObject(js_object)));
+      ;
+      RETURN_STATUS_IF_FALSE(env,
+                             legacy_info != nullptr &&
+                                 legacy_info->Type() == NativeType::CustomClass,
+                             napi_invalid_arg);
+    }
+  } else {
+    RETURN_STATUS_IF_FALSE(env, JSValueIsObject(env->ctx->context, value),
+                           napi_invalid_arg);
+  }
+
   JSObjectRef obj = ToJSObject(value);
 
-  NativeInfo* info = static_cast<NativeInfo*>(JSObjectGetPrivate(obj));
+  NativeInfo* info = NativeInfo::EnsureNativeInfo(env, obj);
 
   if (wrap_type == retrievable) {
-    RETURN_STATUS_IF_FALSE(env,
-                           info != nullptr &&
-                               info->Type() == NativeType::Wrapper &&
-                               info->Data() == nullptr,
+    // If we've already wrapped this object, we error out.
+    RETURN_STATUS_IF_FALSE(env, info != nullptr && info->Data() == nullptr,
                            napi_invalid_arg);
   } else {
     // If no finalize callback is provided, we error out.
@@ -991,28 +1014,35 @@ inline napi_status Wrap(napi_env env, napi_value js_object, void* native_object,
 enum UnwrapAction { KeepWrap, RemoveWrap };
 
 inline static napi_status Unwrap(napi_env env, napi_value js_object,
-                                 void** result, UnwrapAction action) {
+                                 void** result, UnwrapAction action,
+                                 bool spec_compliant) {
   // Omit NAPI_PREAMBLE and GET_RETURN_STATUS because V8 calls here cannot throw
   // JS exceptions.
   if (action == KeepWrap) {
     CHECK_ARG(env, result);
   }
-
-  // val->IsXXX check is expensive, omit them (though not safe)
   JSValueRef value = ToJSValue(js_object);
-  //  RETURN_STATUS_IF_FALSE(env, JSValueIsObject(env->ctx->context, value),
-  //  napi_invalid_arg);
-  JSObjectRef obj = ToJSObject(value);
-
-  NativeInfo* info = static_cast<NativeInfo*>(JSObjectGetPrivate(obj));
-
-  if (info == nullptr || info->Type() != NativeType::Wrapper ||
-      info->Data() == nullptr) {
-    if (result) {
-      *result = nullptr;
+  if (!spec_compliant) {
+    // If spec_compliant is false, preserve legacy behavior: only objects whose
+    // NativeType is CustomClass can call napi_unwrap.
+    NativeInfo* legacy_info =
+        static_cast<NativeInfo*>(JSObjectGetPrivate(ToJSObject(js_object)));
+    if (!legacy_info || legacy_info->Type() != NativeType::CustomClass) {
+      if (result) {
+        *result = nullptr;
+      }
+      return napi_clear_last_error(env);
     }
-    return napi_clear_last_error(env);
+  } else {
+    RETURN_STATUS_IF_FALSE(env, JSValueIsObject(env->ctx->context, value),
+                           napi_invalid_arg);
   }
+
+  JSObjectRef obj = ToJSObject(value);
+  NativeInfo* info = NativeInfo::EnsureNativeInfo(env, obj);
+
+  RETURN_STATUS_IF_FALSE(env, info != nullptr && info->Data() != nullptr,
+                         napi_invalid_arg);
 
   Reference* reference = static_cast<Reference*>(info->Data());
 
@@ -2179,15 +2209,33 @@ napi_status napi_wrap(napi_env env, napi_value js_object, void* native_object,
                       napi_finalize finalize_cb, void* finalize_hint,
                       napi_ref* result) {
   return jscimpl::Wrap<jscimpl::retrievable>(
-      env, js_object, native_object, finalize_cb, finalize_hint, result);
+      env, js_object, native_object, finalize_cb, finalize_hint, result, false);
+}
+
+napi_status napi_wrap_spec_compliant(napi_env env, napi_value js_object,
+                                     void* native_object,
+                                     napi_finalize finalize_cb,
+                                     void* finalize_hint, napi_ref* result) {
+  return jscimpl::Wrap<jscimpl::retrievable>(
+      env, js_object, native_object, finalize_cb, finalize_hint, result, true);
 }
 
 napi_status napi_unwrap(napi_env env, napi_value obj, void** result) {
-  return jscimpl::Unwrap(env, obj, result, jscimpl::KeepWrap);
+  return jscimpl::Unwrap(env, obj, result, jscimpl::KeepWrap, false);
+}
+
+napi_status napi_unwrap_spec_compliant(napi_env env, napi_value obj,
+                                       void** result) {
+  return jscimpl::Unwrap(env, obj, result, jscimpl::KeepWrap, true);
 }
 
 napi_status napi_remove_wrap(napi_env env, napi_value obj, void** result) {
-  return jscimpl::Unwrap(env, obj, result, jscimpl::RemoveWrap);
+  return jscimpl::Unwrap(env, obj, result, jscimpl::RemoveWrap, false);
+}
+
+napi_status napi_remove_wrap_spec_compliant(napi_env env, napi_value obj,
+                                            void** result) {
+  return jscimpl::Unwrap(env, obj, result, jscimpl::RemoveWrap, true);
 }
 
 napi_status napi_create_external(napi_env env, void* data,
@@ -2227,10 +2275,7 @@ napi_status napi_create_reference(napi_env env, napi_value value,
 
   jscimpl::Reference* reference = jscimpl::Reference::New(
       env, ToJSObject(jsc_value),
-      // NativeInfo is used in weak references
-      // A bridge object will be created if its null
-      // see `_get_native_info` for details
-      static_cast<jscimpl::NativeInfo*>(JSObjectGetPrivate(ToJSObject(value))),
+      jscimpl::NativeInfo::EnsureNativeInfo(env, ToJSObject(jsc_value)),
       initial_refcount, false);
   *result = reinterpret_cast<napi_ref>(reference);
 
@@ -2839,8 +2884,8 @@ napi_status napi_gen_code_cache(napi_env env, const char* script,
 napi_status napi_add_finalizer(napi_env env, napi_value js_object,
                                void* native_object, napi_finalize finalize_cb,
                                void* finalize_hint, napi_ref* result) {
-  return jscimpl::Wrap<jscimpl::anonymous>(env, js_object, native_object,
-                                           finalize_cb, finalize_hint, result);
+  return jscimpl::Wrap<jscimpl::anonymous>(
+      env, js_object, native_object, finalize_cb, finalize_hint, result, true);
 }
 
 napi_status napi_adjust_external_memory(napi_env env, int64_t change_in_bytes,

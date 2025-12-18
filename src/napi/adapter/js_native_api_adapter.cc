@@ -391,18 +391,21 @@ napi_status napi_define_class_primjs(napi_env env, const char* utf8name,
 napi_status napi_wrap_primjs(napi_env env, napi_value js_object,
                              void* native_object, napi_finalize finalize_cb,
                              void* finalize_hint, napi_ref* result) {
-  return env->napi_wrap(env, js_object, native_object, finalize_cb,
-                        finalize_hint, result);
+  CHECK_ENV(env);
+  return env->napi_wrap_spec_compliant(env, js_object, native_object,
+                                       finalize_cb, finalize_hint, result);
 }
 
 napi_status napi_unwrap_primjs(napi_env env, napi_value js_object,
                                void** result) {
-  return env->napi_unwrap(env, js_object, result);
+  CHECK_ENV(env);
+  return env->napi_unwrap_spec_compliant(env, js_object, result);
 }
 
 napi_status napi_remove_wrap_primjs(napi_env env, napi_value js_object,
                                     void** result) {
-  return env->napi_remove_wrap(env, js_object, result);
+  CHECK_ENV(env);
+  return env->napi_remove_wrap_spec_compliant(env, js_object, result);
 }
 
 napi_status napi_create_external_primjs(napi_env env, void* data,

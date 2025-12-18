@@ -88,6 +88,7 @@ struct napi_context__v8 {
     last_exception.Reset();
     context_persistent.Reset();
     instance_data_registry.clear();
+    wrapper_private_key.Reset();
   }
 
   napi_env env;
@@ -107,6 +108,13 @@ struct napi_context__v8 {
 
   static inline void HandleThrow(napi_context ctx, v8::Local<v8::Value> value) {
     ctx->isolate->ThrowException(value);
+  }
+
+  inline v8::Local<v8::Private> GetWrapperPrivateKey() {
+    if (wrapper_private_key.IsEmpty()) {
+      wrapper_private_key.Reset(isolate, v8::Private::New(isolate));
+    }
+    return v8::Local<v8::Private>::New(isolate, wrapper_private_key);
   }
 
   template <typename T, typename U = decltype(HandleThrow)>
@@ -141,6 +149,7 @@ struct napi_context__v8 {
   int open_context_scopes = 0;
   int refs = 1;
   std::unordered_map<uint64_t, void*> instance_data_registry;
+  v8::Persistent<v8::Private> wrapper_private_key;
 };
 
 #define RETURN_STATUS_IF_FALSE(env, condition, status) \

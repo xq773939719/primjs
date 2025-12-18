@@ -859,6 +859,15 @@ static napi_status napi_wrap(napi_env env, napi_value js_object,
   return napi_clear_last_error(env);
 }
 
+static napi_status napi_wrap_spec_compliant(napi_env env, napi_value js_object,
+                                            void *native_object,
+                                            napi_finalize finalize_cb,
+                                            void *finalize_hint,
+                                            napi_ref *result) {
+  return napi_wrap(env, js_object, native_object, finalize_cb, finalize_hint,
+                   result);
+}
+
 static napi_status napi_unwrap(napi_env env, napi_value js_object,
                                void **result) {
   if (result == nullptr) return napi_clear_last_error(env);
@@ -872,14 +881,29 @@ static napi_status napi_unwrap(napi_env env, napi_value js_object,
   return napi_clear_last_error(env);
 }
 
+static napi_status napi_unwrap_spec_compliant(napi_env env,
+                                              napi_value js_object,
+                                              void **result) {
+  return napi_unwrap(env, js_object, result);
+}
+
 static napi_status napi_remove_wrap(napi_env env, napi_value js_object,
                                     void **result) {
   ExternalNativeInfo *native_info;
   CALL_JSVM(OH_JSVM_RemoveWrap(env->ctx->vm_env_, NapiValueToJS(js_object),
                                (void **)(&native_info)));
+  if (result) {
+    *result = native_info->Data();
+  }
   native_info->ClearFinalizer();
   ExternalNativeInfo::Delete(nullptr, native_info, nullptr);
   return napi_clear_last_error(env);
+}
+
+static napi_status napi_remove_wrap_spec_compliant(napi_env env,
+                                                   napi_value js_object,
+                                                   void **result) {
+  return napi_remove_wrap(env, js_object, result);
 }
 
 static napi_status napi_create_external(napi_env env, void *data,

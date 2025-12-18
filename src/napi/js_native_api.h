@@ -521,6 +521,17 @@ struct napi_env__ {
                                                    napi_value func, size_t argc,
                                                    const napi_value* argv,
                                                    napi_value* result);
+
+  napi_status (*napi_wrap_spec_compliant)(napi_env env, napi_value js_object,
+                                          void* native_object,
+                                          napi_finalize finalize_cb,
+                                          void* finalize_hint,
+                                          napi_ref* result);
+  napi_status (*napi_unwrap_spec_compliant)(napi_env env, napi_value js_object,
+                                            void** result);
+  napi_status (*napi_remove_wrap_spec_compliant)(napi_env env,
+                                                 napi_value js_object,
+                                                 void** result);
 };
 
 #ifdef ENABLE_CODECACHE
@@ -651,6 +662,9 @@ struct napi_env__ {
   V(define_properties_spec_compliant)  \
   V(define_class_spec_compliant)       \
   V(call_function_spec_compliant)      \
+  V(wrap_spec_compliant)               \
+  V(unwrap_spec_compliant)             \
+  V(remove_wrap_spec_compliant)        \
   NAPI_ENGINE_CACHE_CALL(V)
 
 // These functions share same implementations across JS engines

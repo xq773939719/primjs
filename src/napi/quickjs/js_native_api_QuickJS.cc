@@ -113,7 +113,11 @@ class ArgsConverter {
 
 namespace qjsimpl {
 
-enum NativeType { External, Wrapper };
+// NativeInfo is usually of type External; only objects created by a custom
+// class defined through napi_define_class carry a NativeInfo of type
+// CustomClass. We keep the CustomClass type for legacy compatibility, and apply
+// special handling for it in certain scenarios.
+enum NativeType { External, CustomClass };
 
 class NativeInfo final {
  public:
@@ -156,6 +160,8 @@ class NativeInfo final {
 
     return class_id;
   }
+
+  static NativeInfo* EnsureNativeInfo(napi_env env, LEPUSValueConst obj);
 
  private:
   ~NativeInfo() {
@@ -202,23 +208,44 @@ class External {
   }
 };
 
-class Wrapper {
+NativeInfo* NativeInfo::EnsureNativeInfo(napi_env env, LEPUSValueConst obj) {
+  NativeInfo* info;
+
+  LEPUSContext* ctx = env->ctx->ctx;
+  LEPUSValue info_holder =
+      LEPUS_GetProperty(ctx, obj, env->ctx->PROP_FINALIZER);
+  assert(!LEPUS_IsException(info_holder));
+  if (LEPUS_IsUndefined(info_holder)) {
+    LEPUSValue info_holder = External::Create(env, &info);
+    assert(!LEPUS_IsException(info_holder));
+    int ret = LEPUS_DefinePropertyValue(ctx, obj, env->ctx->PROP_FINALIZER,
+                                        info_holder, 0);
+    (void)ret;
+    assert(ret != -1);
+    return info;
+  } else {
+    info = qjsimpl::NativeInfo::Get(info_holder);
+    JS_FreeValue_Comp(ctx, info_holder);
+  }
+  return info;
+}
+
+class CustomClass {
  public:
   static LEPUSValue Create(napi_env env, LEPUSValue proto) {
     LEPUSClassID id = NativeInfo::ClassId(env);
     if (!id) {
       return LEPUS_ThrowInternalError(env->ctx->ctx,
-                                      "failed to create Wrapper Class");
+                                      "failed to create CustomClass Class");
     }
     LEPUSValue object = LEPUS_NewObjectProtoClass(env->ctx->ctx, proto, id);
     if (!LEPUS_IsException(object)) {
-      LEPUS_SetOpaque(object, new NativeInfo(env, NativeType::Wrapper));
+      LEPUS_SetOpaque(object, new NativeInfo(env, NativeType::CustomClass));
     }
     return object;
   }
 };
 
-// Wrapper around v8impl::Persistent that implements reference counting.
 class RefBase : protected Finalizer, RefTracker {
  protected:
   RefBase(napi_env env, uint32_t initial_refcount, bool delete_self,
@@ -394,16 +421,29 @@ enum WrapType { retrievable, anonymous };
 template <WrapType wrap_type>
 inline napi_status Wrap(napi_env env, napi_value js_object, void* native_object,
                         napi_finalize finalize_cb, void* finalize_hint,
-                        napi_ref* result) {
+                        napi_ref* result, bool spec_compliant) {
+  CHECK_ARG(env, js_object);
   LEPUSValueConst obj = ToJSValue(js_object);
 
-  NativeInfo* info = NativeInfo::Get(obj);
+  if (!spec_compliant) {
+    // If spec_compliant is false, preserve legacy behavior: only objects whose
+    // NativeType is CustomClass can call napi_wrap.
+    if (wrap_type == retrievable) {
+      NativeInfo* legacy_info = NativeInfo::Get(obj);
+      RETURN_STATUS_IF_FALSE(env,
+                             legacy_info != nullptr &&
+                                 legacy_info->Type() == NativeType::CustomClass,
+                             napi_invalid_arg);
+    }
+  } else {
+    RETURN_STATUS_IF_FALSE(env, LEPUS_IsObject(obj), napi_invalid_arg);
+  }
+
+  NativeInfo* info = NativeInfo::EnsureNativeInfo(env, obj);
 
   if (wrap_type == retrievable) {
-    RETURN_STATUS_IF_FALSE(env,
-                           info != nullptr &&
-                               info->Type() == NativeType::Wrapper &&
-                               info->Data() == nullptr,
+    // If we've already wrapped this object, we error out.
+    RETURN_STATUS_IF_FALSE(env, info != nullptr && info->Data() == nullptr,
                            napi_invalid_arg);
   } else {
     // If no finalize callback is provided, we error out.
@@ -437,20 +477,32 @@ inline napi_status Wrap(napi_env env, napi_value js_object, void* native_object,
 enum UnwrapAction { KeepWrap, RemoveWrap };
 
 inline static napi_status Unwrap(napi_env env, napi_value js_object,
-                                 void** result, UnwrapAction action) {
+                                 void** result, UnwrapAction action,
+                                 bool spec_compliant) {
+  CHECK_ARG(env, js_object);
   if (action == KeepWrap) {
     CHECK_ARG(env, result);
   }
-
   LEPUSValue obj = ToJSValue(js_object);
-  NativeInfo* info = NativeInfo::Get(obj);
 
-  if (!info || info->Type() != qjsimpl::NativeType::Wrapper) {
-    if (result) {
-      *result = nullptr;
+  if (!spec_compliant) {
+    // If spec_compliant is false, preserve legacy behavior: only objects whose
+    // NativeType is CustomClass can call napi_unwrap.
+    NativeInfo* legacy_info = NativeInfo::Get(obj);
+    if (!legacy_info || legacy_info->Type() != NativeType::CustomClass) {
+      if (result) {
+        *result = nullptr;
+      }
+      return napi_clear_last_error(env);
     }
-    return napi_clear_last_error(env);
+  } else {
+    RETURN_STATUS_IF_FALSE(env, LEPUS_IsObject(obj), napi_invalid_arg);
   }
+
+  NativeInfo* info = NativeInfo::EnsureNativeInfo(env, obj);
+
+  RETURN_STATUS_IF_FALSE(env, info != nullptr && info->Data() != nullptr,
+                         napi_invalid_arg);
 
   Reference* reference = static_cast<Reference*>(info->Data());
 
@@ -602,22 +654,7 @@ void NAPIPersistent::ResetWeakInfo() {
 NativeInfo* NAPIPersistent::_get_native_info() {
   assert(!_empty);
   if (!_native_info) {
-    LEPUSValue finalizer =
-        LEPUS_GetProperty(_env->ctx->ctx, _value, _env->ctx->PROP_FINALIZER);
-    assert(!LEPUS_IsException(finalizer));
-    if (LEPUS_IsUndefined(finalizer)) {
-      NativeInfo* info;
-      finalizer = External::Create(_env, &info);
-      assert(!LEPUS_IsException(finalizer));
-      int ret = LEPUS_DefinePropertyValue(
-          _env->ctx->ctx, _value, _env->ctx->PROP_FINALIZER, finalizer, 0);
-      (void)ret;
-      assert(ret != -1);
-      _native_info = info;
-    } else {
-      _native_info = qjsimpl::NativeInfo::Get(finalizer);
-      JS_FreeValue_Comp(_env->ctx->ctx, finalizer);
-    }
+    _native_info = NativeInfo::EnsureNativeInfo(_env, _value);
   }
   return _native_info;
 }
@@ -783,6 +820,8 @@ napi_status napi_define_class_internal(
                << GetExceptionMessage(ctx, ctor_magic));
           return ctor_magic;
         }
+        // ctor_magic is a napi_external value, which is guaranteed to have a
+        // NativeInfo.
         qjsimpl::NativeInfo* info = qjsimpl::NativeInfo::Get(ctor_magic);
         JS_FreeValue_Comp(ctx, ctor_magic);
         if (!(info != nullptr &&
@@ -793,10 +832,11 @@ napi_status napi_define_class_internal(
         }
         napi_env env = info->Env();
         ClassData* class_data = static_cast<ClassData*>(info->Data());
-        LEPUSValue this_val = qjsimpl::Wrapper::Create(env, class_data->proto);
+        LEPUSValue this_val =
+            qjsimpl::CustomClass::Create(env, class_data->proto);
 
         if (LEPUS_IsException(this_val)) {
-          LOGI("create Wrapper return exception");
+          LOGI("create CustomClass instance return exception");
           return this_val;
         }
         napi_clear_last_error(env);
@@ -1793,15 +1833,33 @@ napi_status napi_wrap(napi_env env, napi_value js_object, void* native_object,
                       napi_finalize finalize_cb, void* finalize_hint,
                       napi_ref* result) {
   return qjsimpl::Wrap<qjsimpl::retrievable>(
-      env, js_object, native_object, finalize_cb, finalize_hint, result);
+      env, js_object, native_object, finalize_cb, finalize_hint, result, false);
+}
+
+napi_status napi_wrap_spec_compliant(napi_env env, napi_value js_object,
+                                     void* native_object,
+                                     napi_finalize finalize_cb,
+                                     void* finalize_hint, napi_ref* result) {
+  return qjsimpl::Wrap<qjsimpl::retrievable>(
+      env, js_object, native_object, finalize_cb, finalize_hint, result, true);
 }
 
 napi_status napi_unwrap(napi_env env, napi_value obj, void** result) {
-  return qjsimpl::Unwrap(env, obj, result, qjsimpl::KeepWrap);
+  return qjsimpl::Unwrap(env, obj, result, qjsimpl::KeepWrap, false);
+}
+
+napi_status napi_unwrap_spec_compliant(napi_env env, napi_value obj,
+                                       void** result) {
+  return qjsimpl::Unwrap(env, obj, result, qjsimpl::KeepWrap, true);
 }
 
 napi_status napi_remove_wrap(napi_env env, napi_value obj, void** result) {
-  return qjsimpl::Unwrap(env, obj, result, qjsimpl::RemoveWrap);
+  return qjsimpl::Unwrap(env, obj, result, qjsimpl::RemoveWrap, false);
+}
+
+napi_status napi_remove_wrap_spec_compliant(napi_env env, napi_value obj,
+                                            void** result) {
+  return qjsimpl::Unwrap(env, obj, result, qjsimpl::RemoveWrap, true);
 }
 
 napi_status napi_create_external(napi_env env, void* data,
@@ -1841,7 +1899,8 @@ napi_status napi_create_reference(napi_env env, napi_value value,
   }
 
   qjsimpl::Reference* reference = qjsimpl::Reference::New(
-      env, val, qjsimpl::NativeInfo::Get(val), initial_refcount, false);
+      env, val, qjsimpl::NativeInfo::EnsureNativeInfo(env, val),
+      initial_refcount, false);
   *result = reinterpret_cast<napi_ref>(reference);
 
   return napi_clear_last_error(env);
@@ -2546,8 +2605,8 @@ napi_status napi_gen_code_cache(napi_env env, const char* script,
 napi_status napi_add_finalizer(napi_env env, napi_value js_object,
                                void* native_object, napi_finalize finalize_cb,
                                void* finalize_hint, napi_ref* result) {
-  return qjsimpl::Wrap<qjsimpl::anonymous>(env, js_object, native_object,
-                                           finalize_cb, finalize_hint, result);
+  return qjsimpl::Wrap<qjsimpl::anonymous>(
+      env, js_object, native_object, finalize_cb, finalize_hint, result, true);
 }
 
 napi_status napi_adjust_external_memory(napi_env env, int64_t change_in_bytes,

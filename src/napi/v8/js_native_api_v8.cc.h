@@ -467,29 +467,45 @@ class Reference : public RefBase {
 enum UnwrapAction { KeepWrap, RemoveWrap };
 
 inline static napi_status Unwrap(napi_env env, napi_value js_object,
-                                 void** result, UnwrapAction action) {
+                                 void** result, UnwrapAction action,
+                                 bool spec_compliant) {
   // Omit NAPI_PREAMBLE and GET_RETURN_STATUS because V8 calls here cannot throw
   // JS exceptions.
 
-  // val->IsXXX check is expensive, omit them (though not safe)
+  CHECK_ARG(env, js_object);
+
   v8::Local<v8::Value> value = v8impl::V8LocalValueFromJsValue(js_object);
-  //  RETURN_STATUS_IF_FALSE(env, value->IsObject(), napi_invalid_arg);
+  if (spec_compliant) {
+    RETURN_STATUS_IF_FALSE(env, value->IsObject(), napi_invalid_arg);
+  }
   v8::Local<v8::Object> obj = value.As<v8::Object>();
 
-  if (obj->InternalFieldCount() == 0) {
-    if (result) {
-      *result = nullptr;
+  if (!spec_compliant) {
+    // If spec_compliant is false, preserve legacy behavior: for objects not
+    // created by a class defined via napi_define_class
+    // (obj->InternalFieldCount() == 0), return immediately.
+    if (obj->InternalFieldCount() == 0) {
+      if (result) {
+        *result = nullptr;
+      }
+      return napi_clear_last_error(env);
     }
-    return napi_clear_last_error(env);
   }
 
-  auto val = obj->GetInternalField(0);
+  auto maybe_val =
+      obj->GetPrivate(env->ctx->context(), env->ctx->GetWrapperPrivateKey());
+  CHECK_MAYBE_EMPTY(env, maybe_val, napi_generic_failure);
+  v8::Local<v8::Value> val = maybe_val.ToLocalChecked();
 
-  if (!val->IsExternal()) {
-    if (result) {
-      *result = nullptr;
+  if (!spec_compliant) {
+    if (!val->IsExternal()) {
+      if (result) {
+        *result = nullptr;
+      }
+      return napi_clear_last_error(env);
     }
-    return napi_clear_last_error(env);
+  } else {
+    RETURN_STATUS_IF_FALSE(env, val->IsExternal(), napi_invalid_arg);
   }
 
   Reference* reference =
@@ -500,8 +516,11 @@ inline static napi_status Unwrap(napi_env env, napi_value js_object,
   }
 
   if (action == RemoveWrap) {
-    obj->SetInternalField(0, v8::Undefined(env->ctx->isolate));
     Reference::Delete(reference);
+    auto maybe_result = obj->DeletePrivate(env->ctx->context(),
+                                           env->ctx->GetWrapperPrivateKey());
+    CHECK_MAYBE_NOTHING(env, maybe_result, napi_generic_failure);
+    RETURN_STATUS_IF_FALSE(env, maybe_result.FromJust(), napi_generic_failure);
   }
 
   return napi_clear_last_error(env);
@@ -722,9 +741,10 @@ enum WrapType { retrievable, anonymous };
 template <WrapType wrap_type>
 inline napi_status Wrap(napi_env env, napi_value js_object, void* native_object,
                         napi_finalize finalize_cb, void* finalize_hint,
-                        napi_ref* result) {
+                        napi_ref* result, bool spec_compliant) {
   // Omit NAPI_PREAMBLE and GET_RETURN_STATUS because V8 calls here cannot throw
   // JS exceptions.
+  CHECK_ARG(env, js_object);
 
   v8::Local<v8::Value> value = v8impl::V8LocalValueFromJsValue(js_object);
   RETURN_STATUS_IF_FALSE(env, value->IsObject(), napi_invalid_arg);
@@ -732,8 +752,11 @@ inline napi_status Wrap(napi_env env, napi_value js_object, void* native_object,
 
   if (wrap_type == retrievable) {
     // If we've already wrapped this object, we error out.
-    RETURN_STATUS_IF_FALSE(env, obj->GetInternalField(0)->IsUndefined(),
-                           napi_invalid_arg);
+    RETURN_STATUS_IF_FALSE(
+        env,
+        !obj->HasPrivate(env->ctx->context(), env->ctx->GetWrapperPrivateKey())
+             .FromJust(),
+        napi_invalid_arg);
   } else if (wrap_type == anonymous) {
     // If no finalize callback is provided, we error out.
     CHECK_ARG(env, finalize_cb);
@@ -757,7 +780,11 @@ inline napi_status Wrap(napi_env env, napi_value js_object, void* native_object,
   }
 
   if (wrap_type == retrievable) {
-    obj->SetInternalField(0, v8::External::New(env->ctx->isolate, reference));
+    auto maybe_result =
+        obj->SetPrivate(env->ctx->context(), env->ctx->GetWrapperPrivateKey(),
+                        v8::External::New(env->ctx->isolate, reference));
+    CHECK_MAYBE_NOTHING(env, maybe_result, napi_generic_failure);
+    RETURN_STATUS_IF_FALSE(env, maybe_result.FromJust(), napi_generic_failure);
   }
 
   return napi_clear_last_error(env);
@@ -1974,16 +2001,34 @@ GEN_COERCE_FUNCTION(STRING, String, string)
 napi_status napi_wrap(napi_env env, napi_value js_object, void* native_object,
                       napi_finalize finalize_cb, void* finalize_hint,
                       napi_ref* result) {
-  return v8impl::Wrap<v8impl::retrievable>(env, js_object, native_object,
-                                           finalize_cb, finalize_hint, result);
+  return v8impl::Wrap<v8impl::retrievable>(
+      env, js_object, native_object, finalize_cb, finalize_hint, result, false);
+}
+
+napi_status napi_wrap_spec_compliant(napi_env env, napi_value js_object,
+                                     void* native_object,
+                                     napi_finalize finalize_cb,
+                                     void* finalize_hint, napi_ref* result) {
+  return v8impl::Wrap<v8impl::retrievable>(
+      env, js_object, native_object, finalize_cb, finalize_hint, result, true);
 }
 
 napi_status napi_unwrap(napi_env env, napi_value obj, void** result) {
-  return v8impl::Unwrap(env, obj, result, v8impl::KeepWrap);
+  return v8impl::Unwrap(env, obj, result, v8impl::KeepWrap, false);
+}
+
+napi_status napi_unwrap_spec_compliant(napi_env env, napi_value obj,
+                                       void** result) {
+  return v8impl::Unwrap(env, obj, result, v8impl::KeepWrap, true);
 }
 
 napi_status napi_remove_wrap(napi_env env, napi_value obj, void** result) {
-  return v8impl::Unwrap(env, obj, result, v8impl::RemoveWrap);
+  return v8impl::Unwrap(env, obj, result, v8impl::RemoveWrap, false);
+}
+
+napi_status napi_remove_wrap_spec_compliant(napi_env env, napi_value obj,
+                                            void** result) {
+  return v8impl::Unwrap(env, obj, result, v8impl::RemoveWrap, true);
 }
 
 napi_status napi_create_external(napi_env env, void* data,
@@ -2498,8 +2543,8 @@ napi_status napi_gen_code_cache(napi_env env, const char* script,
 napi_status napi_add_finalizer(napi_env env, napi_value js_object,
                                void* native_object, napi_finalize finalize_cb,
                                void* finalize_hint, napi_ref* result) {
-  return v8impl::Wrap<v8impl::anonymous>(env, js_object, native_object,
-                                         finalize_cb, finalize_hint, result);
+  return v8impl::Wrap<v8impl::anonymous>(
+      env, js_object, native_object, finalize_cb, finalize_hint, result, true);
 }
 
 napi_status napi_adjust_external_memory(napi_env env, int64_t change_in_bytes,

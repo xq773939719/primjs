@@ -2967,3 +2967,43 @@ JSValueRef napi_js_value_to_jsc_value(napi_env env, napi_value value) {
 napi_value napi_jsc_value_to_js_value(napi_env env, JSValueRef value) {
   return ToNapi(value);
 }
+
+// napi_create_date / napi_is_date / napi_get_date_value adapted from
+// NativeScript/napi-android (c) 2020 nStudio, LLC, Apache-2.0.
+napi_status napi_create_date(napi_env env, double time, napi_value* result) {
+  CHECK_ARG(env, result);
+
+  auto jsTime = JSValueMakeNumber(env->ctx->context, time);
+  JSValueRef exception{};
+  auto jsDate = JSObjectMakeDate(env->ctx->context, 1, &jsTime, &exception);
+  CHECK_JSC(env, exception);
+
+  *result = ToNapi(jsDate);
+  return napi_ok;
+}
+
+napi_status napi_is_date(napi_env env, napi_value value, bool* result) {
+  CHECK_ARG(env, value);
+  CHECK_ARG(env, result);
+
+  *result = JSValueIsDate(env->ctx->context, ToJSValue(value));
+
+  return napi_ok;
+}
+
+napi_status napi_get_date_value(napi_env env, napi_value value,
+                                double* result) {
+  CHECK_ARG(env, value);
+  CHECK_ARG(env, result);
+
+  RETURN_STATUS_IF_FALSE(env,
+                         JSValueIsDate(env->ctx->context, ToJSValue(value)),
+                         napi_date_expected);
+
+  JSValueRef exception{};
+  // we don't piggyback off of napi_get_value_double because that function
+  // SHOULDN'T coerce.
+  *result = JSValueToNumber(env->ctx->context, ToJSValue(value), &exception);
+  CHECK_JSC(env, exception);
+  return napi_clear_last_error(env);
+}

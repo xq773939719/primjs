@@ -1320,6 +1320,24 @@ static napi_status napi_get_own_property_descriptor(napi_env env,
   return napi_clear_last_error(env);
 }
 
+static napi_status napi_create_date(napi_env env, double time,
+                                    napi_value *result) {
+  CALL_JSVM(OH_JSVM_CreateDate(env->ctx->vm_env_, time,
+                               NapiValuePointerToJS(result)));
+  return napi_clear_last_error(env);
+}
+
+static napi_status napi_is_date(napi_env env, napi_value value, bool *is_date) {
+  CALL_JSVM(OH_JSVM_IsDate(env->ctx->vm_env_, NapiValueToJS(value), is_date));
+  return napi_clear_last_error(env);
+}
+
+static napi_status napi_get_date_value(napi_env env, napi_value value,
+                                       double *result) {
+  CALL_JSVM(
+      OH_JSVM_GetDateValue(env->ctx->vm_env_, NapiValueToJS(value), result));
+  return napi_clear_last_error(env);
+}
 #ifdef ENABLE_CODECACHE
 static napi_status napi_gen_code_cache(napi_env env, const char *script,
                                        size_t script_len, const uint8_t **data,

@@ -405,6 +405,16 @@ NAPI_EXTERN napi_status napi_get_threadsafe_function_context_primjs(
 
 NAPI_EXTERN void napi_module_register_primjs(napi_module* mod);
 
+NAPI_EXTERN napi_status napi_create_date_primjs(napi_env env, double time,
+                                                napi_value* result);
+
+NAPI_EXTERN napi_status napi_is_date_primjs(napi_env env, napi_value value,
+                                            bool* is_date);
+
+NAPI_EXTERN napi_status napi_get_date_value_primjs(napi_env env,
+                                                   napi_value value,
+                                                   double* result);
+
 // Not implemented apis
 // NAPI_VERSION 1
 NAPI_EXTERN void napi_fatal_error_primjs(const char* location,
@@ -457,17 +467,6 @@ NAPI_EXTERN napi_status napi_ref_threadsafe_function_primjs(
     napi_env env, napi_threadsafe_function func);
 NAPI_EXTERN napi_status
 napi_acquire_threadsafe_function_primjs(napi_threadsafe_function func);
-
-// NAPI VERSION 5
-NAPI_EXTERN napi_status napi_create_date_primjs(napi_env env, double time,
-                                                napi_value* result);
-
-NAPI_EXTERN napi_status napi_is_date_primjs(napi_env env, napi_value value,
-                                            bool* is_date);
-
-NAPI_EXTERN napi_status napi_get_date_value_primjs(napi_env env,
-                                                   napi_value value,
-                                                   double* result);
 
 // NAPI VERSION 6
 NAPI_EXTERN napi_status napi_create_bigint_int64_primjs(napi_env env,

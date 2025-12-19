@@ -763,6 +763,23 @@ napi_status napi_get_threadsafe_function_context_primjs(
   return napi_runtime_get_threadsafe_function_context(func, result);
 }
 
+napi_status napi_create_date_primjs(napi_env env, double time,
+                                    napi_value* result) {
+  CHECK_ENV(env);
+  return env->napi_create_date(env, time, result);
+}
+
+napi_status napi_is_date_primjs(napi_env env, napi_value value, bool* is_date) {
+  CHECK_ENV(env);
+  return env->napi_is_date(env, value, is_date);
+}
+
+napi_status napi_get_date_value_primjs(napi_env env, napi_value value,
+                                       double* result) {
+  CHECK_ENV(env);
+  return env->napi_get_date_value(env, value, result);
+}
+
 // Not implemented apis
 
 napi_status napi_unref_threadsafe_function_primjs(
@@ -823,26 +840,6 @@ napi_status napi_get_buffer_info_primjs(napi_env env, napi_value value,
 napi_status napi_fatal_exception_primjs(napi_env env, napi_value err) {
   env->napi_throw_error(env, "not implemented error",
                         "napi_fatal_exception is not implemented.\n");
-  return napi_pending_exception;
-}
-
-napi_status napi_create_date_primjs(napi_env env, double time,
-                                    napi_value* result) {
-  env->napi_throw_error(env, "not implemented error",
-                        "napi_create_date is not implemented.\n");
-  return napi_pending_exception;
-}
-
-napi_status napi_is_date_primjs(napi_env env, napi_value value, bool* is_date) {
-  env->napi_throw_error(env, "not implemented error",
-                        "napi_is_date is not implemented.\n");
-  return napi_pending_exception;
-}
-
-napi_status napi_get_date_value_primjs(napi_env env, napi_value value,
-                                       double* result) {
-  env->napi_throw_error(env, "not implemented error",
-                        "napi_get_date_value is not implemented.\n");
   return napi_pending_exception;
 }
 

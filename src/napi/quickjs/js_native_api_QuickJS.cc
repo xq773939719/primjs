@@ -2713,3 +2713,52 @@ inline napi_value NAPIHandleScope::CreateHandle(LEPUSValue v) {
 inline napi_value NAPIHandleScope::Escape(napi_value v) {
   return prev_->CreateHandle(JS_DupValue_Comp(env_->ctx->ctx, ToJSValue(v)));
 }
+
+// napi_create_date / napi_is_date / napi_get_date_value adapted from
+// NativeScript/napi-android (c) 2020 nStudio, LLC, Apache-2.0.
+napi_status napi_create_date(napi_env env, double time, napi_value* result) {
+  CHECK_ARG(env, result);
+  NAPIHandleScope scope(env, env->ctx->ctx, reset_napi_env);
+  napi_value global{}, date_ctor{}, date_param{}, date_value{};
+  CHECK_NAPI(napi_get_global(env, &global));
+  CHECK_NAPI(napi_get_named_property(env, global, "Date", &date_ctor));
+  CHECK_NAPI(napi_create_double(env, time, &date_param));
+  CHECK_NAPI(napi_new_instance(env, date_ctor, 1, &date_param, &date_value));
+  *result = scope.Escape(date_value);
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_is_date(napi_env env, napi_value value, bool* result) {
+  CHECK_ARG(env, value);
+  CHECK_ARG(env, result);
+
+  LEPUSValueConst v = ToJSValue(value);
+
+  if (!LEPUS_IsObject(v)) {
+    *result = false;
+    return napi_clear_last_error(env);
+  }
+
+  *result = LEPUS_GetClassID(env->ctx->ctx, v) == JS_CLASS_DATE;
+
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_date_value(napi_env env, napi_value value,
+                                double* result) {
+  CHECK_ARG(env, value);
+  CHECK_ARG(env, result);
+
+  bool is_date = false;
+  CHECK_NAPI(napi_is_date(env, value, &is_date));
+  RETURN_STATUS_IF_FALSE(env, is_date, napi_date_expected);
+
+  NAPIHandleScope scope(env, env->ctx->ctx, reset_napi_env);
+  napi_value get_time_func{}, time_value{};
+  CHECK_NAPI(napi_get_named_property(env, value, "getTime", &get_time_func));
+  CHECK_NAPI(
+      napi_call_function(env, value, get_time_func, 0, NULL, &time_value));
+  CHECK_NAPI(napi_get_value_double(env, time_value, result));
+
+  return napi_clear_last_error(env);
+}

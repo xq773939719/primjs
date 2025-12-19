@@ -532,6 +532,14 @@ struct napi_env__ {
   napi_status (*napi_remove_wrap_spec_compliant)(napi_env env,
                                                  napi_value js_object,
                                                  void** result);
+
+  napi_status (*napi_create_date)(napi_env env, double time,
+                                  napi_value* result);
+
+  napi_status (*napi_is_date)(napi_env env, napi_value value, bool* is_date);
+
+  napi_status (*napi_get_date_value)(napi_env env, napi_value value,
+                                     double* result);
 };
 
 #ifdef ENABLE_CODECACHE
@@ -665,6 +673,9 @@ struct napi_env__ {
   V(wrap_spec_compliant)               \
   V(unwrap_spec_compliant)             \
   V(remove_wrap_spec_compliant)        \
+  V(create_date)                       \
+  V(is_date)                           \
+  V(get_date_value)                    \
   NAPI_ENGINE_CACHE_CALL(V)
 
 // These functions share same implementations across JS engines

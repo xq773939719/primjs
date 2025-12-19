@@ -2203,6 +2203,8 @@ QJS_HIDE __attribute__((unused)) bool CheckValidPtr_GC(void *runtime,
 QJS_HIDE JSString *js_alloc_string(LEPUSContext *ctx, int max_len,
                                    int is_wide_char);
 QJS_HIDE int JS_InitAtoms(LEPUSRuntime *rt);
+QJS_HIDE LEPUSValue gc(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
+                       LEPUSValueConst *argv);
 QJS_HIDE int JS_isConcatSpreadable(LEPUSContext *ctx, LEPUSValueConst obj);
 typedef struct StringBuffer {
   LEPUSContext *ctx;

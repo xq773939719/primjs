@@ -5469,6 +5469,12 @@ QJS_STATIC void mark_children(LEPUSRuntime *rt, LEPUSValueConst val,
   // <Primjs end>
 }
 
+LEPUSValue gc(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
+              LEPUSValueConst *argv) {
+  LEPUS_RunGC(ctx->rt);
+  return LEPUS_UNDEFINED;
+}
+
 #if 0
 /* not useful until realms are supported */
 static void mark_context(LEPUSRuntime *rt, LEPUSContext *ctx)
@@ -48167,6 +48173,8 @@ void LEPUS_AddIntrinsicBaseObjects(LEPUSContext *ctx) {
 
   /* global properties */
   ctx->eval_obj = LEPUS_GetProperty(ctx, ctx->global_obj, JS_ATOM_eval);
+  LEPUSValue cfunc = LEPUS_NewCFunction(ctx, gc, "lepusng_gc", 0);
+  LEPUS_SetPropertyStr(ctx, ctx->global_obj, "lepusng_gc", cfunc);
   JS_DefinePropertyValueStr_RC(ctx, ctx->global_obj, "globalThis",
                                LEPUS_DupValue(ctx, ctx->global_obj),
                                LEPUS_PROP_CONFIGURABLE | LEPUS_PROP_WRITABLE);

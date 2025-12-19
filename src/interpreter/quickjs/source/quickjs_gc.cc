@@ -2979,12 +2979,6 @@ void LEPUS_RunAllGC() {
   pthread_mutex_unlock(&runtime_mutex);
 }
 
-LEPUSValue gc(LEPUSContext *ctx, LEPUSValueConst this_val, int argc,
-              LEPUSValueConst *argv) {
-  ctx->rt->gc->CollectGarbage();
-  return LEPUS_UNDEFINED;
-}
-
 /* Return false if not an object or if the object has already been
    freed (zombie objects are visible in finalizers when freeing
    cycles). */

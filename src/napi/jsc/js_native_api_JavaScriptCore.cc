@@ -506,7 +506,7 @@ class Function {
     });
 
     NativeInfo* info = new NativeInfo(env, NativeType::Function);
-    Function* fun = new Function(env->ctx, cb, utf8name, data);
+    Function* fun = new Function(env->ctx, cb, utf8name, data, length);
     info->Data(fun);
 
     JSObjectRef function{JSObjectMake(env->ctx->context, functionClass, info)};
@@ -524,8 +524,9 @@ class Function {
   }
 
  private:
-  Function(napi_context ctx, napi_callback cb, const char* name, void* cb_data)
-      : _ctx(ctx), _cb{cb}, _cb_data{cb_data}, _name(name) {}
+  Function(napi_context ctx, napi_callback cb, const char* name, void* cb_data,
+           size_t length)
+      : _ctx(ctx), _cb{cb}, _cb_data{cb_data}, _name(name, length) {}
 
   static void Initialize(JSContextRef ctx, JSObjectRef object,
                          NativeInfo* info) {

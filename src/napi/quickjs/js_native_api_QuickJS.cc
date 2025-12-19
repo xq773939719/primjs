@@ -722,7 +722,9 @@ napi_status napi_create_function(napi_env env, const char* utf8name,
 
   if (utf8name) {
     // ignore error
-    LEPUSValue str = LEPUS_NewString(ctx, utf8name);
+    LEPUSValue str = (length == NAPI_AUTO_LENGTH
+                          ? LEPUS_NewString(ctx, utf8name)
+                          : LEPUS_NewStringLen(ctx, utf8name, length));
     env->ctx->CreateHandle(str, true);
     LEPUS_DefinePropertyValue(ctx, fun, env->ctx->PROP_NAME, str,
                               LEPUS_PROP_CONFIGURABLE);

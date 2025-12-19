@@ -136,6 +136,13 @@ napi_status napi_create_symbol_primjs(napi_env env, napi_value description,
 napi_status napi_create_function_primjs(napi_env env, const char* utf8name,
                                         size_t length, napi_callback cb,
                                         void* data, napi_value* result) {
+  CHECK_ENV(env);
+  CHECK_ARG(env, result);
+  CHECK_ARG(env, cb);
+  if (utf8name) {
+    RETURN_STATUS_IF_FALSE(env, length == NAPI_AUTO_LENGTH || length <= INT_MAX,
+                           napi_invalid_arg);
+  }
   return env->napi_create_function(env, utf8name, length, cb, data, result);
 }
 

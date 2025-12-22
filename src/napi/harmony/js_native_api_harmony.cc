@@ -1338,6 +1338,20 @@ static napi_status napi_get_date_value(napi_env env, napi_value value,
       OH_JSVM_GetDateValue(env->ctx->vm_env_, NapiValueToJS(value), result));
   return napi_clear_last_error(env);
 }
+
+static napi_status napi_get_all_property_names(
+    napi_env env, napi_value object, napi_key_collection_mode key_mode,
+    napi_key_filter key_filter, napi_key_conversion key_conversion,
+    napi_value *result) {
+  CALL_JSVM(OH_JSVM_GetAllPropertyNames(
+      env->ctx->vm_env_, NapiValueToJS(object),
+      static_cast<JSVM_KeyCollectionMode>(key_mode),
+      static_cast<JSVM_KeyFilter>(key_filter),
+      static_cast<JSVM_KeyConversion>(key_conversion),
+      NapiValuePointerToJS(result)));
+  return napi_clear_last_error(env);
+}
+
 #ifdef ENABLE_CODECACHE
 static napi_status napi_gen_code_cache(napi_env env, const char *script,
                                        size_t script_len, const uint8_t **data,

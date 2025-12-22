@@ -982,9 +982,9 @@ napi_status napi_get_property_names_gc(napi_env env, napi_value object,
                          LEPUS_GPN_ENUM_ONLY | LEPUS_PROP_THROW) != -1);
 
   std::vector<LEPUSValue> values;
-  values.reserve(props_length);
+  values.resize(props_length);
   for (uint32_t i = 0; i < props_length; i++) {
-    values.emplace_back(LEPUS_AtomToValue(ctx, props[i].atom));
+    values[i] = LEPUS_AtomToValue(ctx, props[i].atom);
     func_scope.PushHandle(&values[i], HANDLE_TYPE_LEPUS_VALUE);
   }
   LEPUSValue arr = LEPUS_NewArrayWithValue(ctx, props_length, values.data());
@@ -2761,4 +2761,128 @@ napi_status napi_get_date_value(napi_env env, napi_value value,
   CHECK_NAPI(napi_get_value_double(env, time_value, result));
 
   return napi_clear_last_error(env);
+}
+
+napi_status napi_get_all_property_names_internal(
+    napi_env env, napi_value object, napi_key_collection_mode key_mode,
+    int key_filter, napi_key_conversion key_conversion, napi_value* result) {
+  LEPUSContext* ctx = env->ctx->ctx;
+  LEPUSValue raw_val = ToJSValue(object);
+
+  std::vector<LEPUSValue> values;
+  uint32_t total_len = 0;
+
+  LEPUSValue proto = raw_val;
+  while (!LEPUS_IsNull(proto)) {
+    LEPUSPropertyEnum* props = NULL;
+    uint32_t props_length = 0;
+    CHECK_QJS(env, LEPUS_GetOwnPropertyNames(ctx, &props, &props_length, proto,
+                                             key_filter) != -1);
+    total_len += props_length;
+    values.reserve(total_len);
+
+    for (uint32_t i = 0; i < props_length; i++) {
+      // TODO: coerce to number if napi_key_keep_numbers
+      values.emplace_back(LEPUS_AtomToValue(ctx, props[i].atom));
+      LEPUS_FreeAtom(ctx, props[i].atom);
+    }
+    lepus_free(ctx, props);
+
+    if (key_mode == napi_key_include_prototypes) {
+      proto = LEPUS_GetPrototype(ctx, proto);
+    } else {
+      proto = LEPUS_NULL;
+    }
+  }
+  LEPUSValue arr = LEPUS_NewArrayWithValue(ctx, total_len, values.data());
+  for (LEPUSValue v : values) {
+    LEPUS_FreeValue(ctx, v);
+  }
+  CHECK_QJS(env, !LEPUS_IsException(arr));
+  *result = env->ctx->CreateHandle(arr);
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_all_property_names_internal_gc(
+    napi_env env, napi_value object, napi_key_collection_mode key_mode,
+    int key_filter, napi_key_conversion key_conversion, napi_value* result) {
+  LEPUSContext* ctx = env->ctx->ctx;
+  LEPUSValue raw_val = ToJSValue(object);
+
+  LEPUSPropertyEnum* props = nullptr;
+  HandleScope func_scope(ctx, &props, HANDLE_TYPE_HEAP_OBJ);
+  std::list<std::vector<LEPUSValue>> values_list;
+  uint32_t total_len = 0;
+
+  LEPUSValue proto = raw_val;
+  while (!LEPUS_IsNull(proto)) {
+    uint32_t props_length = 0;
+    CHECK_QJS(env, LEPUS_GetOwnPropertyNames(ctx, &props, &props_length, proto,
+                                             key_filter) != -1);
+    total_len += props_length;
+    values_list.emplace_back(std::vector<LEPUSValue>(props_length));
+    auto& values = values_list.back();
+    values.resize(props_length);
+
+    for (uint32_t i = 0; i < props_length; i++) {
+      // TODO: coerce to number if napi_key_keep_numbers
+      values[i] = LEPUS_AtomToValue(ctx, props[i].atom);
+      func_scope.PushHandle(&values[i], HANDLE_TYPE_LEPUS_VALUE);
+    }
+
+    if (key_mode == napi_key_include_prototypes) {
+      proto = LEPUS_GetPrototype(ctx, proto);
+    } else {
+      proto = LEPUS_NULL;
+    }
+  }
+
+  std::vector<LEPUSValue> all_values;
+  all_values.reserve(total_len);
+  for (const auto& vec : values_list) {
+    all_values.insert(all_values.end(), vec.begin(), vec.end());
+  }
+
+  LEPUSValue arr = LEPUS_NewArrayWithValue(ctx, total_len, all_values.data());
+
+  CHECK_QJS(env, !LEPUS_IsException(arr));
+  *result = env->ctx->CreateHandle(arr);
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_all_property_names(napi_env env, napi_value object,
+                                        napi_key_collection_mode key_mode,
+                                        napi_key_filter key_filter,
+                                        napi_key_conversion key_conversion,
+                                        napi_value* result) {
+  CHECK_ARG(env, object);
+  CHECK_ARG(env, result);
+
+  LEPUSValueConst js_value = ToJSValue(object);
+  RETURN_STATUS_IF_FALSE(env, LEPUS_IsObject(js_value), napi_object_expected);
+
+  int get_filter = LEPUS_GPN_STRING_MASK | LEPUS_GPN_SYMBOL_MASK;
+  if (key_filter == napi_key_all_properties) {
+    get_filter = LEPUS_GPN_STRING_MASK | LEPUS_GPN_SYMBOL_MASK;
+  } else {
+    if (key_filter & napi_key_skip_strings) {
+      get_filter &= ~LEPUS_GPN_STRING_MASK;
+    }
+
+    if (key_filter & napi_key_enumerable) {
+      get_filter |= LEPUS_GPN_ENUM_ONLY;
+    }
+
+    if (key_filter & napi_key_skip_symbols) {
+      get_filter &= ~LEPUS_GPN_SYMBOL_MASK;
+    }
+  }
+
+  LEPUSContext* ctx = env->ctx->ctx;
+  if (LEPUS_IsGCMode(ctx)) {
+    return napi_get_all_property_names_internal_gc(
+        env, object, key_mode, get_filter, key_conversion, result);
+  }
+  return napi_get_all_property_names_internal(env, object, key_mode, get_filter,
+                                              key_conversion, result);
 }

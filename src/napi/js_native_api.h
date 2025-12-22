@@ -540,6 +540,12 @@ struct napi_env__ {
 
   napi_status (*napi_get_date_value)(napi_env env, napi_value value,
                                      double* result);
+
+  napi_status (*napi_get_all_property_names)(napi_env env, napi_value object,
+                                             napi_key_collection_mode key_mode,
+                                             napi_key_filter key_filter,
+                                             napi_key_conversion key_conversion,
+                                             napi_value* result);
 };
 
 #ifdef ENABLE_CODECACHE
@@ -676,6 +682,7 @@ struct napi_env__ {
   V(create_date)                       \
   V(is_date)                           \
   V(get_date_value)                    \
+  V(get_all_property_names)            \
   NAPI_ENGINE_CACHE_CALL(V)
 
 // These functions share same implementations across JS engines

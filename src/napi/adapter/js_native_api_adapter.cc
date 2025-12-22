@@ -236,7 +236,11 @@ napi_status napi_get_prototype_primjs(napi_env env, napi_value object,
 
 napi_status napi_get_property_names_primjs(napi_env env, napi_value object,
                                            napi_value* result) {
-  return env->napi_get_property_names(env, object, result);
+  CHECK_ENV(env);
+  return env->napi_get_all_property_names(
+      env, object, napi_key_include_prototypes,
+      static_cast<napi_key_filter>(napi_key_enumerable | napi_key_skip_symbols),
+      napi_key_numbers_to_strings, result);
 }
 
 napi_status napi_set_property_primjs(napi_env env, napi_value object,
@@ -780,6 +784,15 @@ napi_status napi_get_date_value_primjs(napi_env env, napi_value value,
   return env->napi_get_date_value(env, value, result);
 }
 
+napi_status napi_get_all_property_names_primjs(
+    napi_env env, napi_value object, napi_key_collection_mode key_mode,
+    napi_key_filter key_filter, napi_key_conversion key_conversion,
+    napi_value* result) {
+  CHECK_ENV(env);
+  return env->napi_get_all_property_names(env, object, key_mode, key_filter,
+                                          key_conversion, result);
+}
+
 // Not implemented apis
 
 napi_status napi_unref_threadsafe_function_primjs(
@@ -1001,15 +1014,6 @@ napi_status napi_close_callback_scope_primjs(napi_env env,
                                              napi_callback_scope scope) {
   env->napi_throw_error(env, "not implemented error",
                         "napi_close_callback_scope is not implemented.\n");
-  return napi_pending_exception;
-}
-
-napi_status napi_get_all_property_names_primjs(
-    napi_env env, napi_value object, napi_key_collection_mode key_mode,
-    napi_key_filter key_filter, napi_key_conversion key_conversion,
-    napi_value* result) {
-  env->napi_throw_error(env, "not implemented error",
-                        "napi_get_all_property_names is not implemented.\n");
   return napi_pending_exception;
 }
 

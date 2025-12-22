@@ -1595,12 +1595,8 @@ napi_status napi_strict_equals(napi_env env, napi_value lhs, napi_value rhs,
 
 napi_status napi_get_prototype(napi_env env, napi_value object,
                                napi_value* result) {
-  JSValueRef exception{};
-  JSObjectRef prototype{JSValueToObject(
-      env->ctx->context,
-      JSObjectGetPrototype(env->ctx->context, ToJSObject(object)), &exception)};
-  CHECK_JSC(env, exception);
-
+  JSValueRef prototype =
+      JSObjectGetPrototype(env->ctx->context, ToJSObject(object));
   *result = ToNapi(prototype);
   return napi_clear_last_error(env);
 }
@@ -3005,5 +3001,93 @@ napi_status napi_get_date_value(napi_env env, napi_value value,
   // SHOULDN'T coerce.
   *result = JSValueToNumber(env->ctx->context, ToJSValue(value), &exception);
   CHECK_JSC(env, exception);
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_all_property_names(napi_env env, napi_value object,
+                                        napi_key_collection_mode key_mode,
+                                        napi_key_filter key_filter,
+                                        napi_key_conversion key_conversion,
+                                        napi_value* result) {
+  CHECK_ARG(env, object);
+  CHECK_ARG(env, result);
+
+  RETURN_STATUS_IF_FALSE(env,
+                         JSValueIsObject(env->ctx->context, ToJSValue(object)),
+                         napi_object_expected);
+
+  napi_value global{}, object_ctor{};
+  CHECK_NAPI(napi_get_global(env, &global));
+  CHECK_NAPI(napi_get_named_property(env, global, "Object", &object_ctor));
+
+  std::vector<napi_value> getters;
+  if (!(key_filter & napi_key_skip_strings)) {
+    napi_value str_prop_getter{nullptr};
+    CHECK_NAPI(napi_get_named_property(env, object_ctor, "getOwnPropertyNames",
+                                       &str_prop_getter));
+    getters.emplace_back(str_prop_getter);
+  }
+  if (!(key_filter & napi_key_skip_symbols)) {
+    napi_value symbol_prop_getter{nullptr};
+    CHECK_NAPI(napi_get_named_property(
+        env, object_ctor, "getOwnPropertySymbols", &symbol_prop_getter));
+    getters.emplace_back(symbol_prop_getter);
+  }
+
+  napi_value current = object;
+  napi_value array{};
+  CHECK_NAPI(napi_create_array(env, &array));
+  uint32_t total_count = 0;
+  while (!JSValueIsNull(env->ctx->context, ToJSValue(current))) {
+    for (napi_value getter : getters) {
+      napi_value properties{};
+      CHECK_NAPI(napi_call_function(env, object_ctor, getter, 1, &current,
+                                    &properties));
+      uint32_t length = 0;
+      CHECK_NAPI(napi_get_array_length(env, properties, &length));
+      for (uint32_t i = 0; i != length; ++i) {
+        napi_value key{};
+        CHECK_NAPI(napi_get_element(env, properties, i, &key));
+        napi_value descriptor{};
+        CHECK_NAPI(
+            napi_get_own_property_descriptor(env, current, key, &descriptor));
+        napi_value check{};
+        bool check_result = false;
+        if (key_filter & napi_key_enumerable) {
+          CHECK_NAPI(
+              napi_get_named_property(env, descriptor, "enumerable", &check));
+          CHECK_NAPI(napi_get_value_bool(env, check, &check_result));
+          if (!check_result) {
+            continue;
+          }
+        }
+        if (key_filter & napi_key_writable) {
+          CHECK_NAPI(
+              napi_get_named_property(env, descriptor, "writable", &check));
+          CHECK_NAPI(napi_get_value_bool(env, check, &check_result));
+          if (!check_result) {
+            continue;
+          }
+        }
+        if (key_filter & napi_key_configurable) {
+          CHECK_NAPI(
+              napi_get_named_property(env, descriptor, "configurable", &check));
+          CHECK_NAPI(napi_get_value_bool(env, check, &check_result));
+          if (!check_result) {
+            continue;
+          }
+        }
+        // TODO: Handle napi_key_keep_numbers.
+        CHECK_NAPI(napi_set_element(env, array, total_count, key));
+        total_count++;
+      }
+    }
+    if (key_mode == napi_key_own_only) {
+      break;
+    }
+    CHECK_NAPI(napi_get_prototype(env, current, &current));
+  };
+
+  *result = array;
   return napi_clear_last_error(env);
 }

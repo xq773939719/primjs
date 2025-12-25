@@ -546,6 +546,12 @@ struct napi_env__ {
                                              napi_key_filter key_filter,
                                              napi_key_conversion key_conversion,
                                              napi_value* result);
+
+  napi_status (*napi_create_threadsafe_function_spec_compliant)(
+      napi_env env, void* thread_finalize_data,
+      napi_finalize thread_finalize_cb, void* context,
+      napi_threadsafe_function_call_js call_js_cb, size_t max_queue_size,
+      size_t thread_count, napi_threadsafe_function* result);
 };
 
 #ifdef ENABLE_CODECACHE
@@ -704,7 +710,8 @@ struct napi_env__ {
   V(call_threadsafe_function)         \
   V(delete_threadsafe_function)       \
   V(open_error_scope)                 \
-  V(close_error_scope)
+  V(close_error_scope)                \
+  V(create_threadsafe_function_spec_compliant)
 
 #define NAPI_ENV_CALL(API, ENV, ...) \
   napi_env(ENV)->napi_##API((ENV), __VA_ARGS__)

@@ -105,3 +105,6 @@
 #undef napi_async_context
 #undef napi_callback_scope
 #undef napi_callback_scope__
+#undef napi_threadsafe_function_release_mode
+#undef napi_tsfn_release
+#undef napi_tsfn_abort

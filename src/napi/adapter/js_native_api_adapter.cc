@@ -697,28 +697,53 @@ class ThreadSafeFunctionAdaptor {
   ThreadSafeFunctionAdaptor(
       napi_env env, napi_value func, void* thread_finalize_data,
       napi_finalize thread_finalize_cb, void* context,
-      napi_threadsafe_function_call_js_original call_js_cb)
+      napi_threadsafe_function_call_js_spec_compl call_js_cb)
       : env_(env),
         thread_finalize_data_(thread_finalize_data),
         thread_finalize_cb_(thread_finalize_cb),
         context_(context),
         call_js_cb_(call_js_cb) {
-    env->napi_create_reference(env, func, 1, &func_ref_);
+    if (func) {
+      napi_create_reference_primjs(env, func, 1, &func_ref_);
+    }
   }
   ~ThreadSafeFunctionAdaptor() {
     if (thread_finalize_cb_) {
-      thread_finalize_cb_(env_, thread_finalize_data_, thread_finalize_data_);
+      thread_finalize_cb_(env_, thread_finalize_data_, context_);
     }
-    env_->napi_delete_reference(env_, func_ref_);
+    if (func_ref_) {
+      napi_delete_reference_primjs(env_, func_ref_);
+    }
   }
+
+  void* Context() { return context_; }
 
   static void Call(napi_env env, void* context, void* data) {
     ThreadSafeFunctionAdaptor* adaptor =
         static_cast<ThreadSafeFunctionAdaptor*>(context);
+    napi_value func{nullptr};
+    if (adaptor->func_ref_) {
+      napi_get_reference_value_primjs(env, adaptor->func_ref_, &func);
+    }
     if (adaptor->call_js_cb_) {
-      napi_value func{nullptr};
-      env->napi_get_reference_value(env, adaptor->func_ref_, &func);
       adaptor->call_js_cb_(env, func, adaptor->context_, data);
+    } else {
+      napi_value recv;
+      napi_status status;
+
+      status = napi_get_undefined_primjs(env, &recv);
+      if (status != napi_ok) {
+        napi_throw_error_primjs(env, "ERR_NAPI_TSFN_GET_UNDEFINED",
+                                "Failed to retrieve undefined value");
+        return;
+      }
+
+      status = napi_call_function_primjs(env, recv, func, 0, nullptr, nullptr);
+      if (status != napi_ok && status != napi_pending_exception) {
+        napi_throw_error_primjs(env, "ERR_NAPI_TSFN_CALL_JS",
+                                "Failed to call JS callback");
+        return;
+      }
     }
   }
 
@@ -734,7 +759,7 @@ class ThreadSafeFunctionAdaptor {
   void* thread_finalize_data_{nullptr};
   napi_finalize thread_finalize_cb_{nullptr};
   void* context_{nullptr};
-  napi_threadsafe_function_call_js_original call_js_cb_{nullptr};
+  napi_threadsafe_function_call_js_spec_compl call_js_cb_{nullptr};
 };
 
 napi_status napi_create_threadsafe_function_primjs(
@@ -742,29 +767,76 @@ napi_status napi_create_threadsafe_function_primjs(
     napi_value async_resource_name, size_t max_queue_size,
     size_t initial_thread_count, void* thread_finalize_data,
     napi_finalize thread_finalize_cb, void* context,
-    napi_threadsafe_function_call_js_original call_js_cb,
+    napi_threadsafe_function_call_js_spec_compl call_js_cb,
     napi_threadsafe_function* result) {
+  CHECK_ENV(env);
+  CHECK_ARG(env, result);
+  if (func == nullptr) {
+    CHECK_ARG(env, call_js_cb);
+  } else {
+    CHECK_TO_TYPE(env, func, napi_function, napi_invalid_arg);
+  }
+
   ThreadSafeFunctionAdaptor* adaptor = new ThreadSafeFunctionAdaptor(
       env, func, thread_finalize_data, thread_finalize_cb, context, call_js_cb);
-  return env->napi_create_threadsafe_function(
+  return env->napi_create_threadsafe_function_spec_compliant(
       env, adaptor, ThreadSafeFunctionAdaptor::Finalize, adaptor,
-      ThreadSafeFunctionAdaptor::Call, result);
+      ThreadSafeFunctionAdaptor::Call, max_queue_size, initial_thread_count,
+      result);
 }
 
 napi_status napi_call_threadsafe_function_primjs(
     napi_threadsafe_function func, void* data,
     napi_threadsafe_function_call_mode is_blocking) {
+  if (func == nullptr) {
+    return napi_invalid_arg;
+  }
+
   return napi_runtime_call_threadsafe_function(func, data, is_blocking);
 }
 
 napi_status napi_release_threadsafe_function_primjs(
+    napi_threadsafe_function func, napi_threadsafe_function_release_mode mode) {
+  if (func == nullptr) {
+    return napi_invalid_arg;
+  }
+
+  return napi_runtime_release_threadsafe_function(func, mode);
+}
+
+napi_status napi_acquire_threadsafe_function_primjs(
     napi_threadsafe_function func) {
-  return napi_runtime_delete_threadsafe_function(func);
+  if (func == nullptr) {
+    return napi_invalid_arg;
+  }
+
+  return napi_runtime_acquire_threadsafe_function(func);
 }
 
 napi_status napi_get_threadsafe_function_context_primjs(
     napi_threadsafe_function func, void** result) {
-  return napi_runtime_get_threadsafe_function_context(func, result);
+  if (func == nullptr) {
+    return napi_invalid_arg;
+  }
+
+  void* context = nullptr;
+  napi_runtime_get_threadsafe_function_context(func, &context);
+  if (context == nullptr) {
+    return napi_invalid_arg;
+  }
+  ThreadSafeFunctionAdaptor* adaptor =
+      static_cast<ThreadSafeFunctionAdaptor*>(context);
+  *result = adaptor->Context();
+  return napi_ok;
+}
+
+napi_status napi_unref_threadsafe_function_primjs(
+    napi_env env, napi_threadsafe_function func) {
+  return napi_ok;
+}
+napi_status napi_ref_threadsafe_function_primjs(napi_env env,
+                                                napi_threadsafe_function func) {
+  return napi_ok;
 }
 
 napi_status napi_create_date_primjs(napi_env env, double time,
@@ -794,26 +866,6 @@ napi_status napi_get_all_property_names_primjs(
 }
 
 // Not implemented apis
-
-napi_status napi_unref_threadsafe_function_primjs(
-    napi_env env, napi_threadsafe_function func) {
-  env->napi_throw_error(env, "not implemented error",
-                        "napi_unref_threadsafe_function is not implemented.\n");
-  return napi_pending_exception;
-}
-napi_status napi_ref_threadsafe_function_primjs(napi_env env,
-                                                napi_threadsafe_function func) {
-  env->napi_throw_error(env, "not implemented error",
-                        "napi_ref_threadsafe_function is not implemented.\n");
-  return napi_pending_exception;
-}
-napi_status napi_acquire_threadsafe_function_primjs(
-    napi_threadsafe_function func) {
-  fprintf(stderr,
-          "Node-API function 'napi_acquire_threadsafe_function' is not "
-          "implemented.\n");
-  return napi_generic_failure;
-}
 
 napi_status napi_create_buffer_primjs(napi_env env, size_t length, void** data,
                                       napi_value* result) {

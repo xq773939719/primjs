@@ -460,13 +460,15 @@ class ThreadSafeJSRunner : public AutoCloseable {
   ThreadSafeJSRunner(napi_runtime rt, napi_finalize finalize,
                      void* finalize_data,
                      napi_threadsafe_function_call_js call_js, void* context,
-                     std::shared_ptr<Mutex<SharedState>> state)
+                     std::shared_ptr<Mutex<SharedState>> state,
+                     size_t init_thread_count)
       : AutoCloseable(rt),
         thread_finalize_cb_(finalize),
         thread_finalize_data_(finalize_data),
         call_js_cb_(call_js),
         context_(context),
-        state_(std::move(state)) {}
+        state_(std::move(state)),
+        thread_count_(init_thread_count) {}
 
   void DispatchWork() {
     rt_->PostJSTask<ThreadSafeJSRunner>(
@@ -477,6 +479,27 @@ class ThreadSafeJSRunner : public AutoCloseable {
     // only called once when delete ThreadSafeFunction
     rt_->PostJSTask<ThreadSafeJSRunner>(
         this, [](ThreadSafeJSRunner* self) { self->Finalize(); });
+  }
+
+  napi_status Acquire() {
+    if (is_closing_) {
+      return napi_closing;
+    }
+    thread_count_++;
+    return napi_ok;
+  }
+
+  napi_status Release(napi_threadsafe_function_release_mode mode) {
+    if (thread_count_ == 0) {
+      return napi_invalid_arg;
+    }
+    thread_count_--;
+    if (thread_count_ == 0 || mode == napi_tsfn_abort) {
+      is_closing_ = true;
+      DispatchClose();
+      return napi_closing;
+    }
+    return napi_ok;
   }
 
  protected:
@@ -537,6 +560,8 @@ class ThreadSafeJSRunner : public AutoCloseable {
   napi_threadsafe_function_call_js call_js_cb_;
   void* context_;
   std::shared_ptr<Mutex<SharedState>> state_;
+  size_t thread_count_{0};
+  bool is_closing_{false};
 };
 
 }  // namespace
@@ -545,10 +570,14 @@ class ThreadSafeFunction {
  public:
   ThreadSafeFunction(napi_runtime rt, void* context, napi_finalize finalize,
                      void* finalize_data,
-                     napi_threadsafe_function_call_js call_js)
-      : context_(context), state_(std::make_shared<Mutex<SharedState>>()) {
-    state_->Lock()->runner = new ThreadSafeJSRunner(rt, finalize, finalize_data,
-                                                    call_js, context, state_);
+                     napi_threadsafe_function_call_js call_js,
+                     size_t max_queue_size, size_t init_thread_count)
+      : context_(context),
+        state_(std::make_shared<Mutex<SharedState>>()),
+        max_queue_size_(max_queue_size) {
+    state_->Lock()->runner =
+        new ThreadSafeJSRunner(rt, finalize, finalize_data, call_js, context,
+                               state_, init_thread_count);
   }
 
   // can be called in any thread
@@ -563,6 +592,12 @@ class ThreadSafeFunction {
 
       if (state->runner == nullptr) {
         return napi_closing;
+      }
+
+      // max_queue_size_ is 0 means no limit
+      if (mode == napi_tsfn_nonblocking && max_queue_size_ > 0 &&
+          state->queue.size() >= max_queue_size_) {
+        return napi_queue_full;
       }
 
       std::unique_ptr<std::promise<void>> blocking_promise;
@@ -594,17 +629,58 @@ class ThreadSafeFunction {
     delete fun;
   }
 
+  static napi_status Acquire(ThreadSafeFunction* fun) {
+    auto state = fun->state_->Lock();
+    if (state->runner) {
+      return state->runner->Acquire();
+    }
+    return napi_closing;
+  }
+
+  static napi_status Release(ThreadSafeFunction* fun,
+                             napi_threadsafe_function_release_mode mode) {
+    auto state = fun->state_->Lock();
+    if (state->runner) {
+      // If Release returns napi_closing, it means the tsfn has been released,
+      // so we need to set runner to nullptr
+      if (state->runner->Release(mode) == napi_closing) {
+        state->runner = nullptr;
+      }
+      return napi_ok;
+    }
+    // Align with NAPI standard: if state->runner is null, thread_count is 0,
+    // so calling Release is invalid and we return napi_invalid_arg.
+    return napi_invalid_arg;
+  }
+
  private:
   void* context_;
   std::shared_ptr<Mutex<SharedState>> state_;
+  // max_queue_size_ is 0 means no limit
+  size_t max_queue_size_{0};
 };
 
 napi_status napi_runtime_create_threadsafe_function(
     napi_env env, void* thread_finalize_data, napi_finalize thread_finalize_cb,
     void* context, napi_threadsafe_function_call_js call_js_cb,
     napi_threadsafe_function* result) {
+  ThreadSafeFunction* tsfn =
+      new ThreadSafeFunction(env->rt, context, thread_finalize_cb,
+                             thread_finalize_data, call_js_cb, 0, 1);
+
+  *result = reinterpret_cast<napi_threadsafe_function>(tsfn);
+
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_runtime_create_threadsafe_function_spec_compliant(
+    napi_env env, void* thread_finalize_data, napi_finalize thread_finalize_cb,
+    void* context, napi_threadsafe_function_call_js call_js_cb,
+    size_t max_queue_size, size_t thread_count,
+    napi_threadsafe_function* result) {
   ThreadSafeFunction* tsfn = new ThreadSafeFunction(
-      env->rt, context, thread_finalize_cb, thread_finalize_data, call_js_cb);
+      env->rt, context, thread_finalize_cb, thread_finalize_data, call_js_cb,
+      max_queue_size, thread_count);
 
   *result = reinterpret_cast<napi_threadsafe_function>(tsfn);
 
@@ -715,6 +791,18 @@ napi_status napi_runtime_delete_threadsafe_function(
     napi_threadsafe_function func) {
   ThreadSafeFunction::Delete(reinterpret_cast<ThreadSafeFunction*>(func));
   return napi_ok;
+}
+
+napi_status napi_runtime_acquire_threadsafe_function(
+    napi_threadsafe_function func) {
+  return ThreadSafeFunction::Acquire(
+      reinterpret_cast<ThreadSafeFunction*>(func));
+}
+
+napi_status napi_runtime_release_threadsafe_function(
+    napi_threadsafe_function func, napi_threadsafe_function_release_mode mode) {
+  return ThreadSafeFunction::Release(
+      reinterpret_cast<ThreadSafeFunction*>(func), mode);
 }
 
 napi_runtime_configuration napi_create_runtime_configuration() {

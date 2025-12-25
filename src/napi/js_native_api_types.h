@@ -66,6 +66,11 @@ typedef enum {
 } napi_threadsafe_function_call_mode;
 
 typedef enum {
+  napi_tsfn_release,
+  napi_tsfn_abort
+} napi_threadsafe_function_release_mode;
+
+typedef enum {
   napi_default = 0,
   napi_writable = 1 << 0,
   napi_enumerable = 1 << 1,

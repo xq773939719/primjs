@@ -122,3 +122,7 @@
 #define napi_async_context napi_async_context_primjs
 #define napi_callback_scope napi_callback_scope_primjs
 #define napi_callback_scope__ napi_callback_scope_primjs__
+#define napi_threadsafe_function_release_mode \
+  napi_threadsafe_function_release_mode_primjs
+#define napi_tsfn_release napi_tsfn_release_primjs
+#define napi_tsfn_abort napi_tsfn_abort_primjs

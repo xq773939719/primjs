@@ -23,7 +23,7 @@
 
 EXTERN_C_START
 
-typedef void (*napi_threadsafe_function_call_js_original)(
+typedef void (*napi_threadsafe_function_call_js_spec_compl)(
     napi_env env, napi_value js_callback, void* context, void* data);
 
 typedef struct napi_callback_scope__* napi_callback_scope;
@@ -391,14 +391,14 @@ NAPI_EXTERN napi_status napi_create_threadsafe_function_primjs(
     napi_value async_resource_name, size_t max_queue_size,
     size_t initial_thread_count, void* thread_finalize_data,
     napi_finalize thread_finalize_cb, void* context,
-    napi_threadsafe_function_call_js_original call_js_cb,
+    napi_threadsafe_function_call_js_spec_compl call_js_cb,
     napi_threadsafe_function* result);
 
 NAPI_EXTERN napi_status napi_call_threadsafe_function_primjs(
     napi_threadsafe_function func, void* data,
     napi_threadsafe_function_call_mode is_blocking);
-NAPI_EXTERN napi_status
-napi_release_threadsafe_function_primjs(napi_threadsafe_function func);
+NAPI_EXTERN napi_status napi_release_threadsafe_function_primjs(
+    napi_threadsafe_function func, napi_threadsafe_function_release_mode mode);
 
 NAPI_EXTERN napi_status napi_get_threadsafe_function_context_primjs(
     napi_threadsafe_function func, void** result);

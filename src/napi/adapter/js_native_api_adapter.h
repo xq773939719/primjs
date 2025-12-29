@@ -341,9 +341,7 @@ NAPI_EXTERN napi_status napi_is_promise_primjs(napi_env env, napi_value value,
                                                bool* is_promise);
 
 // Script execution
-NAPI_EXTERN napi_status napi_run_script_primjs(napi_env env, const char* script,
-                                               size_t length,
-                                               const char* filename,
+NAPI_EXTERN napi_status napi_run_script_primjs(napi_env env, napi_value script,
                                                napi_value* result);
 
 // Memory management
@@ -403,8 +401,6 @@ NAPI_EXTERN napi_status napi_release_threadsafe_function_primjs(
 NAPI_EXTERN napi_status napi_get_threadsafe_function_context_primjs(
     napi_threadsafe_function func, void** result);
 
-NAPI_EXTERN void napi_module_register_primjs(napi_module* mod);
-
 NAPI_EXTERN napi_status napi_create_date_primjs(napi_env env, double time,
                                                 napi_value* result);
 
@@ -414,6 +410,18 @@ NAPI_EXTERN napi_status napi_is_date_primjs(napi_env env, napi_value value,
 NAPI_EXTERN napi_status napi_get_date_value_primjs(napi_env env,
                                                    napi_value value,
                                                    double* result);
+
+typedef struct napi_module_spec_compl {
+  int nm_version;
+  unsigned int nm_flags;
+  const char* nm_filename;
+  napi_addon_register_func nm_register_func;
+  const char* nm_modname;
+  void* nm_link;
+  void* reserved[4];
+} napi_module_spec_compl;
+
+NAPI_EXTERN void napi_module_register_primjs(napi_module_spec_compl* mod);
 
 // Not implemented apis
 // NAPI_VERSION 1

@@ -584,21 +584,46 @@ napi_status napi_create_promise_primjs(napi_env env, napi_deferred* deferred,
   return env->napi_create_promise(env, deferred, promise);
 }
 
-napi_status napi_release_deferred_primjs(napi_env env, napi_deferred deferred,
-                                         napi_value resolution,
-                                         napi_deferred_release_mode mode) {
-  return env->napi_release_deferred(env, deferred, resolution, mode);
-}
-
 napi_status napi_is_promise_primjs(napi_env env, napi_value value,
                                    bool* is_promise) {
+  CHECK_ENV(env);
+  CHECK_ARG(env, value);
+  CHECK_ARG(env, is_promise);
   return env->napi_is_promise(env, value, is_promise);
 }
 
-napi_status napi_run_script_primjs(napi_env env, const char* script,
-                                   size_t length, const char* filename,
+napi_status napi_resolve_deferred_primjs(napi_env env, napi_deferred deferred,
+                                         napi_value resolution) {
+  CHECK_ENV(env);
+  CHECK_ARG(env, deferred);
+  CHECK_ARG(env, resolution);
+  return env->napi_release_deferred(env, deferred, resolution,
+                                    napi_deferred_resolve);
+}
+
+napi_status napi_reject_deferred_primjs(napi_env env, napi_deferred deferred,
+                                        napi_value rejection) {
+  CHECK_ENV(env);
+  CHECK_ARG(env, deferred);
+  CHECK_ARG(env, rejection);
+  return env->napi_release_deferred(env, deferred, rejection,
+                                    napi_deferred_reject);
+}
+
+napi_status napi_run_script_primjs(napi_env env, napi_value script,
                                    napi_value* result) {
-  return env->napi_run_script(env, script, length, filename, result);
+  CHECK_ENV(env);
+  CHECK_ARG(env, script);
+  CHECK_ARG(env, result);
+  CHECK_TO_TYPE(env, script, napi_string, napi_string_expected);
+
+  size_t length = 0;
+  CHECK_NAPI(env->napi_get_value_string_utf8(env, script, nullptr, 0, &length));
+  std::string script_str(length + 1, 0);
+  CHECK_NAPI(env->napi_get_value_string_utf8(env, script, script_str.data(),
+                                             length, &length));
+
+  return env->napi_run_script(env, script_str.data(), length, nullptr, result);
 }
 
 napi_status napi_adjust_external_memory_primjs(napi_env env,
@@ -686,10 +711,6 @@ void napi_fatal_error_primjs(const char* location, size_t location_len,
   }
 
   std::abort();
-}
-
-void napi_module_register_primjs(napi_module* mod) {
-  napi_module_register_xx(mod);
 }
 
 class ThreadSafeFunctionAdaptor {
@@ -865,6 +886,22 @@ napi_status napi_get_all_property_names_primjs(
                                           key_conversion, result);
 }
 
+void napi_module_register_primjs(napi_module_spec_compl* mod) {
+  // Since napi_module_register_xx does not copy the contents of `napi_module`,
+  // it only stores its pointer. To align with the NAPI standard, we copy the
+  // contents of the napi module here. As napi module registration is global and
+  // its lifetime follows that of the process, the newly created napi module
+  // object here does not need to be explicitly freed.
+  napi_module* new_mod = new napi_module;
+  new_mod->nm_version = mod->nm_version;
+  new_mod->nm_filename = mod->nm_filename;
+  new_mod->nm_register_func = mod->nm_register_func;
+  new_mod->nm_modname = mod->nm_modname;
+  new_mod->nm_link = static_cast<struct napi_module*>(mod->nm_link);
+
+  napi_module_register_xx(new_mod);
+}
+
 // Not implemented apis
 
 napi_status napi_create_buffer_primjs(napi_env env, size_t length, void** data,
@@ -1037,20 +1074,6 @@ napi_status node_api_create_external_string_utf16_primjs(
   env->napi_throw_error(
       env, "not implemented error",
       "node_api_create_external_string_utf16 is not implemented.\n");
-  return napi_pending_exception;
-}
-
-napi_status napi_resolve_deferred_primjs(napi_env env, napi_deferred deferred,
-                                         napi_value resolution) {
-  env->napi_throw_error(env, "not implemented error",
-                        "napi_resolve_deferred is not implemented.\n");
-  return napi_pending_exception;
-}
-
-napi_status napi_reject_deferred_primjs(napi_env env, napi_deferred deferred,
-                                        napi_value rejection) {
-  env->napi_throw_error(env, "not implemented error",
-                        "napi_reject_deferred is not implemented.\n");
   return napi_pending_exception;
 }
 

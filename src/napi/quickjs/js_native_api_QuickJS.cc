@@ -1069,7 +1069,9 @@ napi_status napi_delete_property(napi_env env, napi_value object,
   int result_delete =
       LEPUS_DeleteProperty(ctx, obj, prop_atom, LEPUS_PROP_THROW);
   CHECK_QJS(env, result_delete != -1);
-  *result = result_delete;
+  if (result != nullptr) {
+    *result = result_delete;
+  }
   return napi_clear_last_error(env);
 }
 
@@ -1162,7 +1164,9 @@ napi_status napi_delete_element(napi_env env, napi_value object, uint32_t index,
   int result_delete =
       LEPUS_DeleteProperty(ctx, obj, prop_atom, LEPUS_PROP_THROW);
   CHECK_QJS(env, result_delete != -1);
-  *result = result_delete;
+  if (result != nullptr) {
+    *result = result_delete;
+  }
   return napi_clear_last_error(env);
 }
 
@@ -1365,7 +1369,8 @@ napi_status napi_create_symbol(napi_env env, napi_value description,
   napi_value global{}, symbol_func{}, symbol_value{};
   CHECK_NAPI(napi_get_global(env, &global));
   CHECK_NAPI(napi_get_named_property(env, global, "Symbol", &symbol_func));
-  CHECK_NAPI(napi_call_function(env, global, symbol_func, 1, &description,
+  CHECK_NAPI(napi_call_function(env, global, symbol_func, description ? 1 : 0,
+                                description ? &description : NULL,
                                 &symbol_value));
   *result = scope.Escape(symbol_value);
   return napi_clear_last_error(env);
@@ -1582,9 +1587,11 @@ napi_status napi_throw_(napi_env env, napi_value error) {
 
 napi_status napi_throw_error(napi_env env, const char* code, const char* msg) {
   NAPIHandleScope scope(env, env->ctx->ctx, reset_napi_env);
-  LEPUSValue code_val = LEPUS_NewString(env->ctx->ctx, code);
+  LEPUSValue code_val = code ? LEPUS_NewString(env->ctx->ctx, code)
+                             : LEPUS_NewString(env->ctx->ctx, "");
   env->ctx->CreateHandle(code_val, true);
-  LEPUSValue msg_val = LEPUS_NewString(env->ctx->ctx, msg);
+  LEPUSValue msg_val = msg ? LEPUS_NewString(env->ctx->ctx, msg)
+                           : LEPUS_NewString(env->ctx->ctx, "");
   env->ctx->CreateHandle(msg_val, true);
 
   napi_value error{};
@@ -1601,9 +1608,11 @@ napi_status napi_throw_error(napi_env env, const char* code, const char* msg) {
 napi_status napi_throw_type_error(napi_env env, const char* code,
                                   const char* msg) {
   NAPIHandleScope scope(env, env->ctx->ctx, reset_napi_env);
-  LEPUSValue code_val = LEPUS_NewString(env->ctx->ctx, code);
+  LEPUSValue code_val = code ? LEPUS_NewString(env->ctx->ctx, code)
+                             : LEPUS_NewString(env->ctx->ctx, "");
   env->ctx->CreateHandle(code_val, true);
-  LEPUSValue msg_val = LEPUS_NewString(env->ctx->ctx, msg);
+  LEPUSValue msg_val = msg ? LEPUS_NewString(env->ctx->ctx, msg)
+                           : LEPUS_NewString(env->ctx->ctx, "");
   env->ctx->CreateHandle(msg_val, true);
 
   napi_value error{};
@@ -1620,9 +1629,11 @@ napi_status napi_throw_type_error(napi_env env, const char* code,
 napi_status napi_throw_range_error(napi_env env, const char* code,
                                    const char* msg) {
   NAPIHandleScope scope(env, env->ctx->ctx, reset_napi_env);
-  LEPUSValue code_val = LEPUS_NewString(env->ctx->ctx, code);
+  LEPUSValue code_val = code ? LEPUS_NewString(env->ctx->ctx, code)
+                             : LEPUS_NewString(env->ctx->ctx, "");
   env->ctx->CreateHandle(code_val, true);
-  LEPUSValue msg_val = LEPUS_NewString(env->ctx->ctx, msg);
+  LEPUSValue msg_val = msg ? LEPUS_NewString(env->ctx->ctx, msg)
+                           : LEPUS_NewString(env->ctx->ctx, "");
   env->ctx->CreateHandle(msg_val, true);
 
   napi_value error{};
@@ -1703,6 +1714,7 @@ napi_status napi_get_value_string_latin1(napi_env env, napi_value value,
   size_t length = LEPUS_GetStringLength(env->ctx->ctx, wstring);
 
   if (buf == nullptr) {
+    CHECK_ARG(env, result);
     *result = length;
   } else {
     const char16_t* chars = reinterpret_cast<const char16_t*>(
@@ -1741,6 +1753,7 @@ napi_status napi_get_value_string_utf8(napi_env env, napi_value value,
   CHECK_QJS(env, str);
 
   if (buf == nullptr) {
+    CHECK_ARG(env, result);
     *result = length;
   } else {
     size_t size{std::min(length, bufsize - 1)};
@@ -1775,6 +1788,7 @@ napi_status napi_get_value_string_utf16(napi_env env, napi_value value,
   size_t length = LEPUS_GetStringLength(env->ctx->ctx, wstring);
 
   if (buf == nullptr) {
+    CHECK_ARG(env, result);
     *result = length;
   } else {
     const char16_t* chars = reinterpret_cast<const char16_t*>(

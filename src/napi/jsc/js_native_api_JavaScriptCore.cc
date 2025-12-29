@@ -108,7 +108,20 @@ class JSString {
   }
 
   void CopyToUTF8(char* buf, size_t bufsize, size_t* result) const {
+    if (buf == nullptr || bufsize <= 0) {
+      if (result != nullptr) {
+        *result = 0;
+      }
+      return;
+    }
     size_t size{JSStringGetUTF8CString(_string, buf, bufsize)};
+    // JSStringGetUTF8CString has a bug. Even if the passed buffer size is
+    // smaller than the string size, it will still return the string size.
+    // Therefore, a hacky approach is used here to solve this problem.
+    if (size > bufsize) {
+      size = bufsize;
+      buf[size - 1] = '\0';
+    }
     if (result != nullptr) {
       // JSStringGetUTF8CString returns size with null terminator.
       *result = size - 1;
@@ -1269,9 +1282,12 @@ napi_status napi_delete_property(napi_env env, napi_value object,
 #ifndef _JSC_NO_FAST_KEY
   if (__builtin_available(macos 10.15, ios 13.0, *)) {
     JSValueRef exception{};
-    *result = JSObjectDeletePropertyForKey(
+    bool ret = JSObjectDeletePropertyForKey(
         env->ctx->context, ToJSObject(object), ToJSValue(key), &exception);
     CHECK_JSC(env, exception);
+    if (result != nullptr) {
+      *result = ret;
+    }
   } else
 #endif
   {
@@ -1282,7 +1298,9 @@ napi_status napi_delete_property(napi_env env, napi_value object,
         napi_get_named_property(env, reflect, "deleteProperty", &function));
     napi_value args[] = {object, key};
     CHECK_NAPI(napi_call_function(env, reflect, function, 2, args, &ret));
-    CHECK_NAPI(napi_get_value_bool(env, ret, result));
+    if (result != nullptr) {
+      *result = JSValueToBoolean(env->ctx->context, ToJSValue(ret));
+    }
   }
 
   return napi_clear_last_error(env);
@@ -1368,10 +1386,13 @@ napi_status napi_delete_element(napi_env env, napi_value object, uint32_t index,
 
   std::string index_str = std::to_string(index);
 
-  *result = JSObjectDeleteProperty(
+  bool ret = JSObjectDeleteProperty(
       env->ctx->context, ToJSObject(object),
       JSString(index_str.c_str(), index_str.size()), &exception);
   CHECK_JSC(env, exception);
+  if (result != nullptr) {
+    *result = ret;
+  }
 
   return napi_clear_last_error(env);
 }
@@ -2061,10 +2082,12 @@ napi_status napi_get_value_int32(napi_env env, napi_value value,
 napi_status napi_get_value_uint32(napi_env env, napi_value value,
                                   uint32_t* result) {
   JSValueRef exception{};
-  *result = static_cast<uint32_t>(
+  // First convert double to int64. Do not directly convert it to uint32,
+  // otherwise it will result in undefined behavior if the result is negative.
+  int64_t ret_tmp = static_cast<int64_t>(
       JSValueToNumber(env->ctx->context, ToJSValue(value), &exception));
   CHECK_JSC(env, exception);
-
+  *result = static_cast<uint32_t>(ret_tmp);
   return napi_clear_last_error(env);
 }
 
@@ -2105,6 +2128,7 @@ napi_status napi_get_value_string_latin1(napi_env env, napi_value value,
   CHECK_JSC(env, exception);
 
   if (buf == nullptr) {
+    CHECK_ARG(env, result);
     *result = string.LengthLatin1();
   } else {
     string.CopyToLatin1(buf, bufsize, result);
@@ -2129,6 +2153,7 @@ napi_status napi_get_value_string_utf8(napi_env env, napi_value value,
   CHECK_JSC(env, exception);
 
   if (buf == nullptr) {
+    CHECK_ARG(env, result);
     *result = string.LengthUTF8();
   } else {
     string.CopyToUTF8(buf, bufsize, result);
@@ -2153,6 +2178,7 @@ napi_status napi_get_value_string_utf16(napi_env env, napi_value value,
   CHECK_JSC(env, exception);
 
   if (buf == nullptr) {
+    CHECK_ARG(env, result);
     *result = string.Length();
   } else {
     static_assert(sizeof(char16_t) == sizeof(JSChar),

@@ -1362,6 +1362,50 @@ static napi_status napi_get_all_property_names(
   return napi_clear_last_error(env);
 }
 
+napi_status napi_create_bigint_int64(napi_env env, int64_t value,
+                                     napi_value *result) {
+  CALL_JSVM(OH_JSVM_CreateBigintInt64(env->ctx->vm_env_, value,
+                                      NapiValuePointerToJS(result)));
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_create_bigint_uint64(napi_env env, uint64_t value,
+                                      napi_value *result) {
+  CALL_JSVM(OH_JSVM_CreateBigintUint64(env->ctx->vm_env_, value,
+                                       NapiValuePointerToJS(result)));
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_value_bigint_int64(napi_env env, napi_value value,
+                                        int64_t *result, bool *lossless) {
+  CALL_JSVM(OH_JSVM_GetValueBigintInt64(env->ctx->vm_env_, NapiValueToJS(value),
+                                        result, lossless));
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_value_bigint_uint64(napi_env env, napi_value value,
+                                         uint64_t *result, bool *lossless) {
+  CALL_JSVM(OH_JSVM_GetValueBigintUint64(
+      env->ctx->vm_env_, NapiValueToJS(value), result, lossless));
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_create_bigint_words(napi_env env, int sign_bit,
+                                     size_t word_count, const uint64_t *words,
+                                     napi_value *result) {
+  CALL_JSVM(OH_JSVM_CreateBigintWords(env->ctx->vm_env_, sign_bit, word_count,
+                                      words, NapiValuePointerToJS(result)));
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_value_bigint_words(napi_env env, napi_value value,
+                                        int *sign_bit, size_t *word_count,
+                                        uint64_t *words) {
+  CALL_JSVM(OH_JSVM_GetValueBigintWords(env->ctx->vm_env_, NapiValueToJS(value),
+                                        sign_bit, word_count, words));
+  return napi_clear_last_error(env);
+}
+
 #ifdef ENABLE_CODECACHE
 static napi_status napi_gen_code_cache(napi_env env, const char *script,
                                        size_t script_len, const uint8_t **data,

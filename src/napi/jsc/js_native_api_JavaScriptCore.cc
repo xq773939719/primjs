@@ -64,6 +64,44 @@ class JSString {
     return length;
   }
 
+  static JSStringRef CreateLatin1(const char* string,
+                                  size_t length = NAPI_AUTO_LENGTH) {
+    if (string == nullptr) {
+      return JSStringCreateWithCharacters(nullptr, 0);
+    }
+
+    // Calculate input string length
+    size_t inputLength = length;
+    if (length == NAPI_AUTO_LENGTH) {
+      inputLength = strlen(string);
+    }
+
+    // Fast path for empty string
+    if (inputLength == 0) {
+      return JSStringCreateWithCharacters(nullptr, 0);
+    }
+
+    // Allocate UTF-16 character buffer
+    // Since Latin1 characters can be directly mapped to UTF-16, the length is
+    // the same as input
+    std::vector<JSChar> utf16Buffer(inputLength);
+
+    // Perform Latin1 to UTF-16 conversion
+    // Latin1 characters can be directly mapped to their corresponding UTF-16
+    // values
+    for (size_t i = 0; i < inputLength; ++i) {
+      // Note: Need to convert signed char to unsigned char to ensure correct
+      // handling of characters in the 128-255 range
+      utf16Buffer[i] = static_cast<uint8_t>(string[i]);
+    }
+
+    // Create string using JavaScriptCore API
+    JSStringRef jsString =
+        JSStringCreateWithCharacters(utf16Buffer.data(), inputLength);
+
+    return jsString;
+  }
+
   explicit JSString(const char* string, size_t length = NAPI_AUTO_LENGTH)
       : _string{CreateUTF8(string, length)} {}
 
@@ -1655,7 +1693,9 @@ napi_status napi_create_array_with_length(napi_env env, size_t length,
 
 napi_status napi_create_string_latin1(napi_env env, const char* str,
                                       size_t length, napi_value* result) {
-  *result = ToNapi(JSValueMakeString(env->ctx->context, JSString(str, length)));
+  JSStringRef js_str = JSString::CreateLatin1(str, length);
+  *result = ToNapi(JSValueMakeString(env->ctx->context, js_str));
+  JSStringRelease(js_str);
   return napi_clear_last_error(env);
 }
 
@@ -1874,6 +1914,15 @@ napi_status napi_typeof(napi_env env, napi_value value,
     case kJSTypeObject: {
       JSObjectRef object{ToJSObject(value)};
       if (!JSValueIsObject(env->ctx->context, object)) {
+        // JSC has supported BigInt since iOS 14, but before iOS 18 it returns
+        // kJSTypeObject. Since a BigInt is neither an object nor a symbol, we
+        // can detect it by checking that the value is not a symbol.
+        if (__builtin_available(macos 10.15, ios 13.0, *)) {
+          if (!JSValueIsSymbol(env->ctx->context, object)) {
+            *result = napi_bigint;
+            break;
+          }
+        }
         // Since iOS 13, JSValueGetType will return kJSTypeSymbol
         // Before: Empirically, an es6 Symbol is not an object, but its type is
         // object.  This makes no sense, but we'll run with it.
@@ -1892,12 +1941,16 @@ napi_status napi_typeof(napi_env env, napi_value value,
       }
       break;
     }
-#if defined(__IPHONE_18_0)
-    case kJSTypeBigInt:
-      // JSC does not support BigInt under iOS 18
+    // JSC has supported BigInt since iOS 14, but kJSTypeBigInt is only
+    // available from iOS 18. To allow code compiled against older iOS versions
+    // to run on both pre- and post-iOS 18, we use the numeric value of
+    // kJSTypeBigInt for the comparison.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wswitch"
+    case /* kJSTypeBigInt */ 7:
       *result = napi_bigint;
       break;
-#endif
+#pragma clang diagnostic pop
   }
 
   return napi_clear_last_error(env);
@@ -2592,6 +2645,12 @@ napi_status napi_create_typedarray(napi_env env, napi_typedarray_type type,
       case napi_float64_array:
         jsType = kJSTypedArrayTypeFloat64Array;
         break;
+      case napi_bigint64_array:
+        jsType = kJSTypedArrayTypeBigInt64Array;
+        break;
+      case napi_biguint64_array:
+        jsType = kJSTypedArrayTypeBigUint64Array;
+        break;
       default:
         return napi_set_last_error(env, napi_invalid_arg);
     }
@@ -2645,6 +2704,12 @@ napi_status napi_is_typedarray_of(napi_env env, napi_value typedarray,
       case napi_float64_array:
         *result = typedArrayType == kJSTypedArrayTypeFloat64Array;
         break;
+      case napi_bigint64_array:
+        *result = typedArrayType == kJSTypedArrayTypeBigInt64Array;
+        break;
+      case napi_biguint64_array:
+        *result = typedArrayType == kJSTypedArrayTypeBigUint64Array;
+        break;
       default:
         break;
     }
@@ -2695,6 +2760,12 @@ napi_status napi_get_typedarray_info(napi_env env, napi_value typedarray,
           break;
         case kJSTypedArrayTypeFloat64Array:
           *type = napi_float64_array;
+          break;
+        case kJSTypedArrayTypeBigInt64Array:
+          *type = napi_bigint64_array;
+          break;
+        case kJSTypedArrayTypeBigUint64Array:
+          *type = napi_biguint64_array;
           break;
         default:
           return napi_set_last_error(env, napi_generic_failure);
@@ -3119,4 +3190,233 @@ napi_status napi_get_all_property_names(napi_env env, napi_value object,
 
   *result = array;
   return napi_clear_last_error(env);
+}
+
+static napi_status StringToJSBigInt(napi_env env, const std::string& bigint_str,
+                                    napi_value* result) {
+  JSValueRef exception{};
+  JSGlobalContextRef ctx = env->ctx->context;
+  JSStringRef bigint_js_str = JSStringCreateWithUTF8CString("BigInt");
+  JSValueRef bigint_ctor = JSObjectGetProperty(
+      ctx, JSContextGetGlobalObject(ctx), bigint_js_str, &exception);
+  JSStringRelease(bigint_js_str);
+  CHECK_JSC(env, exception);
+  JSObjectRef bigint_ctor_obj = JSValueToObject(ctx, bigint_ctor, &exception);
+  CHECK_JSC(env, exception);
+  JSStringRef bigint_content_str =
+      JSStringCreateWithUTF8CString(bigint_str.c_str());
+  JSValueRef bigint_content_val = JSValueMakeString(ctx, bigint_content_str);
+  JSStringRelease(bigint_content_str);
+
+  JSValueRef js_bigint = JSObjectCallAsFunction(
+      ctx, bigint_ctor_obj, nullptr, 1, &bigint_content_val, &exception);
+  CHECK_JSC(env, exception);
+  *result = ToNapi(js_bigint);
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_create_bigint_int64(napi_env env, int64_t value,
+                                     napi_value* result) {
+  if (__builtin_available(macos 11.0, ios 14.0, *)) {
+#if (defined(__IPHONE_18_0) &&                               \
+     (__IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_18_0)) || \
+    (defined(__MAC_15_0) && (__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_15_0))
+    JSValueRef exception{};
+    auto js_bigint =
+        JSBigIntCreateWithInt64(env->ctx->context, value, &exception);
+    CHECK_JSC(env, exception);
+    *result = ToNapi(js_bigint);
+    return napi_clear_last_error(env);
+#endif
+    return StringToJSBigInt(env, std::to_string(value), result);
+  }
+  env->napi_throw_error(
+      env, "not implemented error",
+      "napi_create_bigint_int64 is not implemented in JavaScriptCore.\n");
+  return napi_pending_exception;
+}
+
+napi_status napi_create_bigint_uint64(napi_env env, uint64_t value,
+                                      napi_value* result) {
+  if (__builtin_available(macos 11.0, ios 14.0, *)) {
+#if (defined(__IPHONE_18_0) &&                               \
+     (__IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_18_0)) || \
+    (defined(__MAC_15_0) && (__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_15_0))
+    JSValueRef exception{};
+    auto js_bigint =
+        JSBigIntCreateWithUInt64(env->ctx->context, value, &exception);
+    CHECK_JSC(env, exception);
+    *result = ToNapi(js_bigint);
+    return napi_clear_last_error(env);
+#endif
+    return StringToJSBigInt(env, std::to_string(value), result);
+  }
+  env->napi_throw_error(
+      env, "not implemented error",
+      "napi_create_bigint_uint64 is not implemented in JavaScriptCore.\n");
+  return napi_pending_exception;
+}
+
+static napi_status BigIntToString(napi_env env, napi_value value,
+                                  std::string& ret) {
+  JSValueRef exception{};
+  JSGlobalContextRef ctx = env->ctx->context;
+
+  JSStringRef bigint_str = JSStringCreateWithUTF8CString("BigInt");
+  JSValueRef bigint_ctor = JSObjectGetProperty(
+      ctx, JSContextGetGlobalObject(ctx), bigint_str, &exception);
+  JSStringRelease(bigint_str);
+  CHECK_JSC(env, exception);
+
+  JSObjectRef bigint_ctor_obj = JSValueToObject(ctx, bigint_ctor, &exception);
+  CHECK_JSC(env, exception);
+
+  JSStringRef prototype_str = JSStringCreateWithUTF8CString("prototype");
+  JSValueRef bigint_prototype =
+      JSObjectGetProperty(ctx, bigint_ctor_obj, prototype_str, &exception);
+  JSStringRelease(prototype_str);
+  CHECK_JSC(env, exception);
+
+  JSObjectRef bigint_prototype_obj =
+      JSValueToObject(ctx, bigint_prototype, &exception);
+  CHECK_JSC(env, exception);
+
+  JSStringRef tostring_str = JSStringCreateWithUTF8CString("toString");
+  JSValueRef to_str =
+      JSObjectGetProperty(ctx, bigint_prototype_obj, tostring_str, &exception);
+  JSStringRelease(tostring_str);
+  CHECK_JSC(env, exception);
+
+  JSObjectRef to_str_obj = JSValueToObject(ctx, to_str, &exception);
+  CHECK_JSC(env, exception);
+
+  JSStringRef object_str = JSStringCreateWithUTF8CString("Object");
+  JSValueRef obj_ctor = JSObjectGetProperty(ctx, JSContextGetGlobalObject(ctx),
+                                            object_str, &exception);
+  JSStringRelease(object_str);
+  CHECK_JSC(env, exception);
+  JSValueRef bigint_val = ToJSValue(value);
+  JSValueRef bigint_wrap =
+      JSObjectCallAsFunction(ctx, JSValueToObject(ctx, obj_ctor, &exception),
+                             nullptr, 1, &bigint_val, &exception);
+  CHECK_JSC(env, exception);
+  JSObjectRef bigint_wrap_obj = JSValueToObject(ctx, bigint_wrap, &exception);
+  CHECK_JSC(env, exception);
+  JSValueRef bigint_str_val = JSObjectCallAsFunction(
+      ctx, to_str_obj, bigint_wrap_obj, 0, nullptr, &exception);
+  CHECK_JSC(env, exception);
+  JSStringRef bigint_str_ref =
+      JSValueToStringCopy(ctx, bigint_str_val, &exception);
+  CHECK_JSC(env, exception);
+  size_t size = JSStringGetMaximumUTF8CStringSize(bigint_str_ref);
+  ret.resize(size);
+  JSStringGetUTF8CString(bigint_str_ref, ret.data(), size);
+  JSStringRelease(bigint_str_ref);
+  return napi_ok;
+}
+
+napi_status napi_get_value_bigint_int64(napi_env env, napi_value value,
+                                        int64_t* result, bool* lossless) {
+  if (__builtin_available(macos 11.0, ios 14.0, *)) {
+#if (defined(__IPHONE_18_0) &&                               \
+     (__IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_18_0)) || \
+    (defined(__MAC_15_0) && (__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_15_0))
+    JSValueRef exception{};
+    *result = JSValueToInt64(env->ctx->context, value, &exception);
+    CHECK_JSC(env, exception);
+    if (lossless != nullptr) {
+      *lossless = true;
+    }
+    return napi_clear_last_error(env);
+#endif
+
+    std::string bigint_str;
+    napi_status status = BigIntToString(env, value, bigint_str);
+    if (status != napi_ok) {
+      return status;
+    }
+
+    char* endptr = nullptr;
+    errno = 0;
+    long long ll_result = strtoll(bigint_str.c_str(), &endptr, 10);
+    *result = static_cast<int64_t>(ll_result);
+    bool out_of_range = (errno == ERANGE);
+
+    if (!out_of_range) {
+      if (lossless != nullptr) {
+        *lossless = true;
+      }
+    } else {
+      if (lossless != nullptr) {
+        *lossless = false;
+      }
+    }
+    return napi_clear_last_error(env);
+  }
+  env->napi_throw_error(
+      env, "not implemented error",
+      "napi_get_value_bigint_int64 is not implemented in JavaScriptCore.\n");
+  return napi_pending_exception;
+}
+
+napi_status napi_get_value_bigint_uint64(napi_env env, napi_value value,
+                                         uint64_t* result, bool* lossless) {
+  if (__builtin_available(macos 11.0, ios 14.0, *)) {
+#if (defined(__IPHONE_18_0) &&                               \
+     (__IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_18_0)) || \
+    (defined(__MAC_15_0) && (__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_15_0))
+    JSValueRef exception{};
+    *result = JSValueToUInt64(env->ctx->context, value, &exception);
+    CHECK_JSC(env, exception);
+    if (lossless != nullptr) {
+      *lossless = true;
+    }
+    return napi_clear_last_error(env);
+#endif
+
+    std::string bigint_str;
+    napi_status status = BigIntToString(env, value, bigint_str);
+    if (status != napi_ok) {
+      return status;
+    }
+    char* endptr = nullptr;
+    errno = 0;
+    unsigned long long ull_result = strtoull(bigint_str.c_str(), &endptr, 10);
+    *result = static_cast<uint64_t>(ull_result);
+    bool out_of_range = (errno == ERANGE);
+
+    if (!out_of_range) {
+      if (lossless != nullptr) {
+        *lossless = true;
+      }
+    } else {
+      if (lossless != nullptr) {
+        *lossless = false;
+      }
+    }
+    return napi_clear_last_error(env);
+  }
+
+  env->napi_throw_error(
+      env, "not implemented error",
+      "napi_get_value_bigint_uint64 is not implemented in JavaScriptCore.\n");
+  return napi_pending_exception;
+}
+
+napi_status napi_create_bigint_words(napi_env env, int sign_bit,
+                                     size_t word_count, const uint64_t* words,
+                                     napi_value* result) {
+  env->napi_throw_error(
+      env, "not implemented error",
+      "napi_create_bigint_words is not implemented in JavaScriptCore.\n");
+  return napi_pending_exception;
+}
+
+napi_status napi_get_value_bigint_words(napi_env env, napi_value value,
+                                        int* sign_bit, size_t* word_count,
+                                        uint64_t* words) {
+  env->napi_throw_error(
+      env, "not implemented error",
+      "napi_get_value_bigint_words is not implemented in JavaScriptCore.\n");
+  return napi_pending_exception;
 }

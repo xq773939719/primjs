@@ -1312,10 +1312,27 @@ napi_status napi_create_array_with_length(napi_env env, size_t length,
 
 napi_status napi_create_string_latin1(napi_env env, const char* str,
                                       size_t length, napi_value* result) {
+  // Calculate input string length
+  size_t inputLength = length;
+  if (length == NAPI_AUTO_LENGTH) {
+    inputLength = strlen(str);
+  }
+
+  // Allocate UTF-16 character buffer
+  // Since Latin1 characters can be directly mapped to UTF-16, the length is the
+  // same as input
+  std::vector<uint16_t> utf16Buffer(inputLength);
+
+  // Perform Latin1 to UTF-16 conversion
+  // Latin1 characters can be directly mapped to their corresponding UTF-16
+  // values
+  for (size_t i = 0; i < inputLength; ++i) {
+    // Note: Need to convert signed char to unsigned char to ensure correct
+    // handling of characters in the 128-255 range
+    utf16Buffer[i] = static_cast<uint8_t>(str[i]);
+  }
   *result = env->ctx->CreateHandle(
-      length == NAPI_AUTO_LENGTH
-          ? LEPUS_NewString(env->ctx->ctx, str)
-          : LEPUS_NewStringLen(env->ctx->ctx, str, length));
+      LEPUS_NewWString(env->ctx->ctx, utf16Buffer.data(), inputLength));
   return napi_clear_last_error(env);
 }
 
@@ -2214,7 +2231,9 @@ napi_status napi_is_typedarray(napi_env env, napi_value value, bool* result) {
   V(napi_int32_array, JS_CLASS_INT32_ARRAY)          \
   V(napi_uint32_array, JS_CLASS_UINT32_ARRAY)        \
   V(napi_float32_array, JS_CLASS_FLOAT32_ARRAY)      \
-  V(napi_float64_array, JS_CLASS_FLOAT64_ARRAY)
+  V(napi_float64_array, JS_CLASS_FLOAT64_ARRAY)      \
+  V(napi_bigint64_array, JS_CLASS_BIG_INT64_ARRAY)   \
+  V(napi_biguint64_array, JS_CLASS_BIG_UINT64_ARRAY)
 
 napi_status napi_create_typedarray(napi_env env, napi_typedarray_type type,
                                    size_t length, napi_value arraybuffer,
@@ -2230,9 +2249,6 @@ napi_status napi_create_typedarray(napi_env env, napi_typedarray_type type,
     FOR_EACH_TYPEDARRAY(CASE_TYPE)
 
 #undef CASE_TYPE
-    case napi_bigint64_array:
-    case napi_biguint64_array:
-      return napi_set_last_error(env, napi_invalid_arg);
   }
 
   LEPUSValue array = LEPUS_NewTypedArrayWithBuffer(
@@ -2259,9 +2275,6 @@ napi_status napi_is_typedarray_of(napi_env env, napi_value typedarray,
     FOR_EACH_TYPEDARRAY(CASE_TYPE)
 
 #undef CASE_TYPE
-    case napi_bigint64_array:
-    case napi_biguint64_array:
-      return napi_set_last_error(env, napi_invalid_arg);
   }
 
   return napi_clear_last_error(env);
@@ -2283,9 +2296,6 @@ napi_status napi_get_typedarray_info(napi_env env, napi_value typedarray,
     FOR_EACH_TYPEDARRAY(CASE_TYPE)
 
 #undef CASE_TYPE
-    case napi_bigint64_array:
-    case napi_biguint64_array:
-      return napi_set_last_error(env, napi_invalid_arg);
   }
 
   uint32_t byte_offset_num;
@@ -2902,4 +2912,62 @@ napi_status napi_get_all_property_names(napi_env env, napi_value object,
   }
   return napi_get_all_property_names_internal(env, object, key_mode, get_filter,
                                               key_conversion, result);
+}
+
+napi_status napi_create_bigint_int64(napi_env env, int64_t value,
+                                     napi_value* result) {
+  LEPUSValue v = LEPUS_NewBigInt64(env->ctx->ctx, value);
+  CHECK_QJS(env, !LEPUS_IsException(v));
+
+  *result = env->ctx->CreateHandle(v);
+
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_create_bigint_uint64(napi_env env, uint64_t value,
+                                      napi_value* result) {
+  LEPUSValue v = LEPUS_NewBigUint64(env->ctx->ctx, value);
+  CHECK_QJS(env, !LEPUS_IsException(v));
+
+  *result = env->ctx->CreateHandle(v);
+
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_value_bigint_int64(napi_env env, napi_value value,
+                                        int64_t* result, bool* lossless) {
+  LEPUS_ToBigInt64(env->ctx->ctx, result, ToJSValue(value));
+  if (lossless != nullptr) {
+    *lossless = true;
+  }
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_value_bigint_uint64(napi_env env, napi_value value,
+                                         uint64_t* result, bool* lossless) {
+  int64_t int64_result = 0;
+  LEPUS_ToBigInt64(env->ctx->ctx, &int64_result, ToJSValue(value));
+  *result = int64_result;
+  if (lossless != nullptr) {
+    *lossless = true;
+  }
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_create_bigint_words(napi_env env, int sign_bit,
+                                     size_t word_count, const uint64_t* words,
+                                     napi_value* result) {
+  env->napi_throw_error(
+      env, "not implemented error",
+      "napi_create_bigint_words is not implemented in PrimJS.\n");
+  return napi_pending_exception;
+}
+
+napi_status napi_get_value_bigint_words(napi_env env, napi_value value,
+                                        int* sign_bit, size_t* word_count,
+                                        uint64_t* words) {
+  env->napi_throw_error(
+      env, "not implemented error",
+      "napi_get_value_bigint_words is not implemented in PrimJS.\n");
+  return napi_pending_exception;
 }

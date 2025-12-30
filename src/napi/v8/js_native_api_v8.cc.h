@@ -2718,6 +2718,91 @@ napi_status napi_get_all_property_names(napi_env env, napi_value object,
   return GET_RETURN_STATUS(env);
 }
 
+napi_status napi_create_bigint_int64(napi_env env, int64_t value,
+                                     napi_value* result) {
+  *result = v8impl::JsValueFromV8LocalValue(
+      v8::BigInt::New(env->ctx->isolate, value));
+
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_create_bigint_uint64(napi_env env, uint64_t value,
+                                      napi_value* result) {
+  *result = v8impl::JsValueFromV8LocalValue(
+      v8::BigInt::NewFromUnsigned(env->ctx->isolate, value));
+
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_value_bigint_int64(napi_env env, napi_value value,
+                                        int64_t* result, bool* lossless) {
+  v8::Local<v8::Value> val = v8impl::V8LocalValueFromJsValue(value);
+
+  RETURN_STATUS_IF_FALSE(env, val->IsBigInt(), napi_bigint_expected);
+
+  *result = val.As<v8::BigInt>()->Int64Value(lossless);
+
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_get_value_bigint_uint64(napi_env env, napi_value value,
+                                         uint64_t* result, bool* lossless) {
+  v8::Local<v8::Value> val = v8impl::V8LocalValueFromJsValue(value);
+
+  RETURN_STATUS_IF_FALSE(env, val->IsBigInt(), napi_bigint_expected);
+
+  *result = val.As<v8::BigInt>()->Uint64Value(lossless);
+
+  return napi_clear_last_error(env);
+}
+
+napi_status napi_create_bigint_words(napi_env env, int sign_bit,
+                                     size_t word_count, const uint64_t* words,
+                                     napi_value* result) {
+  NAPI_PREAMBLE(env);
+  CHECK_ARG(env, words);
+  CHECK_ARG(env, result);
+
+  v8::Local<v8::Context> context = env->ctx->context();
+
+  RETURN_STATUS_IF_FALSE(env, word_count <= INT_MAX, napi_invalid_arg);
+
+  v8::MaybeLocal<v8::BigInt> b =
+      v8::BigInt::NewFromWords(context, sign_bit, word_count, words);
+
+  CHECK_MAYBE_EMPTY_WITH_PREAMBLE(env, b, napi_generic_failure);
+
+  *result = v8impl::JsValueFromV8LocalValue(b.ToLocalChecked());
+  return GET_RETURN_STATUS(env);
+}
+
+napi_status napi_get_value_bigint_words(napi_env env, napi_value value,
+                                        int* sign_bit, size_t* word_count,
+                                        uint64_t* words) {
+  CHECK_ARG(env, value);
+  CHECK_ARG(env, word_count);
+
+  v8::Local<v8::Value> val = v8impl::V8LocalValueFromJsValue(value);
+
+  RETURN_STATUS_IF_FALSE(env, val->IsBigInt(), napi_bigint_expected);
+
+  v8::Local<v8::BigInt> big = val.As<v8::BigInt>();
+
+  int word_count_int = *word_count;
+
+  if (sign_bit == nullptr && words == nullptr) {
+    word_count_int = big->WordCount();
+  } else {
+    CHECK_ARG(env, sign_bit);
+    CHECK_ARG(env, words);
+    big->ToWordsArray(sign_bit, &word_count_int, words);
+  }
+
+  *word_count = word_count_int;
+
+  return napi_clear_last_error(env);
+}
+
 #ifdef USE_PRIMJS_NAPI
 #include "primjs_napi_undefs.h"
 #endif

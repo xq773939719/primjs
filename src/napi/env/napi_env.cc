@@ -182,7 +182,9 @@ static const char* error_messages[] = {
     "A date was expected",
     "An arraybuffer was expected",
     "A detachable arraybuffer was expected",
-    "Conflict napi instance data key"};
+    "Would deadlock",
+    "No external buffers allowed",
+    "Cannot run js"};
 
 #define NAPI_ARRAYSIZE(array) (sizeof(array) / sizeof(array[0]))
 
@@ -192,7 +194,7 @@ napi_status napi_get_last_error_info(napi_env env,
   // in the napi_status enum each time a new error message is added.
   // We don't have a napi_status_last as this would result in an ABI
   // change each time a message was added.
-  const int last_status = napi_conflict_instance_data;
+  const int last_status = napi_cannot_run_js;
 
   static_assert(NAPI_ARRAYSIZE(error_messages) == last_status + 1,
                 "Count of error messages must match count of error values");

@@ -294,12 +294,18 @@ static napi_status CheckAndSetException(napi_env env, JSVM_Status status,
   auto *vm_env = env->ctx->vm_env_;
   const JSVM_ExtendedErrorInfo *error;
   OH_JSVM_GetLastErrorInfo(vm_env, &error);
-  std::string error_message(error->errorMessage);
+  std::string error_message;
+  if (error->errorMessage) {
+    error_message = std::string(error->errorMessage);
+  }
   auto error_code = error->errorCode;
   LOGE("JSVM_Call  " << func << " failed, return status: " << status
                      << ", error code is " << error_code
                      << ", error message is " << error_message);
-  return JSStatusToNapi(status);
+
+  napi_status s = JSStatusToNapi(status);
+  napi_set_last_error(env, s);
+  return s;
 }
 
 #define CALL_JSVM(func_call)                                \
@@ -1081,7 +1087,7 @@ static napi_status napi_create_arraybuffer(napi_env env, size_t byte_length,
 static napi_status napi_create_external_arraybuffer(
     napi_env env, void *external_data, size_t byte_length,
     napi_finalize finalize_cb, void *finalize_hint, napi_value *result) {
-  return napi_invalid_arg;
+  return napi_set_last_error(env, napi_invalid_arg);
 }
 
 static napi_status napi_get_arraybuffer_info(napi_env env,
@@ -1255,19 +1261,22 @@ static napi_status napi_add_finalizer(napi_env env, napi_value js_object,
   return napi_clear_last_error(env);
 }
 
-static napi_status napi_set_instance_data(napi_env env, uint64_t key,
-                                          void *data, napi_finalize finalize_cb,
-                                          void *finalize_hint) {
+static napi_status_legacy napi_set_instance_data(napi_env env, uint64_t key,
+                                                 void *data,
+                                                 napi_finalize finalize_cb,
+                                                 void *finalize_hint) {
   // TODO:@zhangyuping
   auto &map = env->ctx->instance_data_;
   map[key] = ExternalNativeInfo::Create(env, finalize_cb, data, finalize_hint);
-  return napi_clear_last_error(env);
+  napi_clear_last_error(env);
+  return napi_ok_legacy;
 }
 
 static napi_status napi_set_instance_data_spec_compliant(
     napi_env env, uint64_t key, void *data, napi_finalize finalize_cb,
     void *finalize_hint) {
-  return napi_set_instance_data(env, key, data, finalize_cb, finalize_hint);
+  return static_cast<napi_status>(
+      napi_set_instance_data(env, key, data, finalize_cb, finalize_hint));
 }
 
 static napi_status napi_get_instance_data(napi_env env, uint64_t key,
@@ -1287,9 +1296,10 @@ static napi_status napi_open_context_scope(napi_env env,
   return napi_clear_last_error(env);
 }
 
-static napi_status napi_close_context_scope(napi_env env,
-                                            napi_context_scope result) {
-  return napi_clear_last_error(env);
+static napi_status_legacy napi_close_context_scope(napi_env env,
+                                                   napi_context_scope result) {
+  napi_clear_last_error(env);
+  return napi_ok_legacy;
 }
 
 static napi_status napi_equals(napi_env env, napi_value lhs, napi_value rhs,

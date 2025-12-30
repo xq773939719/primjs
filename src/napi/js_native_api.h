@@ -398,9 +398,10 @@ struct napi_env__ {
                                     void* finalize_hint, napi_ref* result);
 
   // Instance data
-  napi_status (*napi_set_instance_data)(napi_env env, uint64_t key, void* data,
-                                        napi_finalize finalize_cb,
-                                        void* finalize_hint);
+  napi_status_legacy (*napi_set_instance_data)(napi_env env, uint64_t key,
+                                               void* data,
+                                               napi_finalize finalize_cb,
+                                               void* finalize_hint);
 
   napi_status (*napi_get_instance_data)(napi_env env, uint64_t key,
                                         void** data);
@@ -461,8 +462,8 @@ struct napi_env__ {
 
   napi_status (*napi_open_context_scope)(napi_env env,
                                          napi_context_scope* result);
-  napi_status (*napi_close_context_scope)(napi_env env,
-                                          napi_context_scope scope);
+  napi_status_legacy (*napi_close_context_scope)(napi_env env,
+                                                 napi_context_scope scope);
 
   napi_status (*napi_open_error_scope)(napi_env env, napi_error_scope* result);
   napi_status (*napi_close_error_scope)(napi_env env, napi_error_scope scope);

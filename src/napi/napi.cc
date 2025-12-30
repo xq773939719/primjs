@@ -38,6 +38,15 @@ static void CheckStatus(napi_env env, napi_status status, const char* message) {
   }
 }
 
+static void CheckStatusLegacy(napi_env env, napi_status_legacy status,
+                              const char* message) {
+  if (status != napi_ok_legacy) {
+    std::string msg_str =
+        std::string(message) + ", napi status legacy " + std::to_string(status);
+    Napi::Error::New(env, msg_str.c_str()).ThrowAsJavaScriptException();
+  }
+}
+
 void NAPI::FromJustIsNothing() { Fatal("FromJust is Nothing"); }
 
 void NAPI::ToValueEmpty() { Fatal("ToValueEmpty is Nothing"); }
@@ -256,9 +265,9 @@ void* Env::GetInstanceData(uint64_t key) {
 
 void Env::SetInstanceData(uint64_t key, void* data, napi_finalize finalize_cb,
                           void* hint) {
-  napi_status status =
+  napi_status_legacy status =
       NAPI_ENV_CALL(set_instance_data, _env, key, data, finalize_cb, hint);
-  CheckStatus(_env, status, "failed to call napi_set_instance_data");
+  CheckStatusLegacy(_env, status, "failed to call napi_set_instance_data");
 }
 
 void Env::AddCleanupHook(void (*cb)(void*), void* data) {
@@ -1352,8 +1361,8 @@ ContextScope::ContextScope(Napi::Env env) : _env(env) {
 }
 
 ContextScope::~ContextScope() {
-  napi_status status = NAPI_ENV_CALL(close_context_scope, _env, _scope);
-  CheckStatus(_env, status, "failed to call napi_close_context_scope");
+  napi_status_legacy status = NAPI_ENV_CALL(close_context_scope, _env, _scope);
+  CheckStatusLegacy(_env, status, "failed to call napi_close_context_scope");
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -2155,17 +2155,19 @@ napi_status napi_open_context_scope(napi_env env, napi_context_scope* result) {
   return napi_clear_last_error(env);
 }
 
-napi_status napi_close_context_scope(napi_env env, napi_context_scope scope) {
+napi_status_legacy napi_close_context_scope(napi_env env,
+                                            napi_context_scope scope) {
   // Omit NAPI_PREAMBLE and GET_RETURN_STATUS because V8 calls here cannot throw
   // JS exceptions.
 
   if (env->ctx->open_context_scopes == 0) {
-    return napi_context_scope_mismatch;
+    return napi_context_scope_mismatch_legacy;
   }
 
   env->ctx->open_context_scopes--;
   delete v8impl::V8ContextScopeFromJsContextScope(scope);
-  return napi_clear_last_error(env);
+  napi_clear_last_error(env);
+  return napi_ok_legacy;
 }
 
 napi_status napi_open_handle_scope(napi_env env, napi_handle_scope* result) {
@@ -2555,18 +2557,19 @@ napi_status napi_adjust_external_memory(napi_env env, int64_t change_in_bytes,
   return napi_clear_last_error(env);
 }
 
-napi_status napi_set_instance_data(napi_env env, uint64_t key, void* data,
-                                   napi_finalize finalize_cb,
-                                   void* finalize_hint) {
+napi_status_legacy napi_set_instance_data(napi_env env, uint64_t key,
+                                          void* data, napi_finalize finalize_cb,
+                                          void* finalize_hint) {
   auto it = env->ctx->instance_data_registry.find(key);
   if (it != env->ctx->instance_data_registry.end()) {
-    return napi_conflict_instance_data;
+    return napi_conflict_instance_data_legacy;
   }
 
   env->ctx->instance_data_registry[key] =
       v8impl::RefBase::New(env, 0, true, finalize_cb, data, finalize_hint);
 
-  return napi_clear_last_error(env);
+  napi_clear_last_error(env);
+  return napi_ok_legacy;
 }
 
 napi_status napi_set_instance_data_spec_compliant(napi_env env, uint64_t key,

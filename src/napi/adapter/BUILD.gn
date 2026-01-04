@@ -3,13 +3,18 @@
 # LICENSE file in the root directory of this source tree.
 
 import("//Primjs.gni")
-config("config") {
+
+config("napi_adapter_config") {
   include_dirs = [ "." ]
+  defines = []
+  if (enable_napi_adapter_extern) {
+    defines += [ "ENABLE_NAPI_ADAPTER_EXTERN" ]
+  }
 }
 
 napi_source_set("adapter") {
   sources = [ "js_native_api_adapter.cc" ]
   public = [ "./js_native_api_adapter.h" ]
-  public_configs = [ ":config" ]
+  public_configs = [ ":napi_adapter_config" ]
   public_deps = [ "../..:napi_lib" ]
 }

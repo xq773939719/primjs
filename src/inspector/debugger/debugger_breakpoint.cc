@@ -31,7 +31,9 @@
 
 #include "inspector/debugger/debugger_breakpoint.h"
 
+#include <set>
 #include <string>
+#include <utility>
 
 #include "gc/trace-gc.h"
 #include "inspector/debugger/debugger.h"
@@ -57,30 +59,6 @@ QJS_STATIC BOOL InRange(int32_t line, int64_t column, int64_t start_line,
   return line > start_line && line < end_line;
 }
 
-QJS_STATIC bool LineColExist(LEPUSContext *ctx, LEPUSValue locations,
-                             int32_t line, int64_t column) {
-  int len = LEPUS_GetLength(ctx, locations);
-  for (int i = 0; i < len; i++) {
-    HandleScope block_scope{ctx->rt};
-    LEPUSValue location = LEPUS_GetPropertyUint32(ctx, locations, i);
-    block_scope.PushHandle(&location, HANDLE_TYPE_LEPUS_VALUE);
-    int32_t each_line = -1;
-    int64_t each_column = -1;
-    LEPUSValue line_number = LEPUS_GetPropertyStr(ctx, location, "lineNumber");
-    block_scope.PushHandle(&line_number, HANDLE_TYPE_LEPUS_VALUE);
-    LEPUSValue column_number =
-        LEPUS_GetPropertyStr(ctx, location, "columnNumber");
-    block_scope.PushHandle(&column_number, HANDLE_TYPE_LEPUS_VALUE);
-    LEPUS_ToInt32(ctx, &each_line, line_number);
-    LEPUS_ToInt64(ctx, &each_column, column_number);
-    if (!ctx->rt->gc_enable) LEPUS_FreeValue(ctx, location);
-    if (line == each_line && column == each_column) {
-      return true;
-    }
-  }
-  return false;
-}
-
 QJS_STATIC bool AdjustSatisfy(int32_t line, int64_t column, int32_t bp_line,
                               int64_t bp_column, int32_t closed_line,
                               int64_t closed_column) {
@@ -100,7 +78,8 @@ QJS_HIDE bool NotInCurrentFunc(LEPUSFunctionBytecode *b, int32_t script_id,
                                int64_t bp_line) {
   if (!b || !b->has_debug) return true;
   if ((b->script && b->script->id != script_id) ||
-      (b->debug.line_num - 1 > bp_line)) {
+      (b->debug.line_num - 1 > bp_line) ||
+      (b->debug.end_line_num > 0 && b->debug.end_line_num - 1 < bp_line)) {
     return true;
   }
   return false;
@@ -119,15 +98,15 @@ QJS_HIDE LEPUSScriptSource *GetScriptByHash(LEPUSContext *ctx,
 }
 
 // given pc, return where this pc is
-QJS_STATIC void GetPCLineColumn(LEPUSContext *ctx, const uint8_t *&p, int &pc,
-                                int &pc_prev, const uint8_t *p_end,
-                                struct LEPUSFunctionBytecode *b, int32_t &line,
+// see function: find_line_num
+QJS_STATIC void GetPCLineColumn(LEPUSContext *ctx, const uint8_t *&p,
+                                const uint8_t *p_end, int &pc,
+                                struct LEPUSFunctionBytecode *b,
+                                int64_t &line_col_numn, int32_t &line,
                                 int64_t &column) {
-  pc_prev = pc;
+  int64_t diff = 0;
+  int ret, op;
   if (p < p_end) {
-    int64_t v;
-    int ret;
-    unsigned int op;
     op = *(p)++;
     if (op == 0) {
       uint64_t val;
@@ -135,19 +114,21 @@ QJS_STATIC void GetPCLineColumn(LEPUSContext *ctx, const uint8_t *&p, int &pc,
       if (ret < 0) goto fail;
       pc += val;
       p += ret;
-      ret = get_sleb128_u64(&v, p, p_end);
+      ret = get_sleb128_u64(&diff, p, p_end);
       if (ret < 0) {
       fail:
+        /* should never happen */
         return;
       }
       p += ret;
     } else {
       op -= PC2LINE_OP_FIRST;
       pc += (op / PC2LINE_RANGE);
+      diff = (op % PC2LINE_RANGE) + PC2LINE_BASE;
     }
   }
-  int64_t line_column_num = find_line_num(ctx, b, pc_prev);
-  ComputeLineCol(line_column_num, &line, &column);
+  ComputeLineCol(line_col_numn, &line, &column);
+  line_col_numn += diff;
   return;
 }
 
@@ -200,20 +181,18 @@ QJS_HIDE void AdjustBreakpoint(LEPUSDebuggerInfo *info, const char *url,
   int32_t bp_column = bp->column;
   list_for_each(el, &ctx->debugger_info->bytecode_list) {
     LEPUSFunctionBytecode *b = list_entry(el, LEPUSFunctionBytecode, link);
-    if (!b || !b->has_debug) continue;
-    if (b->script && b->script != bsrc) continue;
+    if (!b->has_debug || (b->script && b->script != bsrc)) continue;
+    if (NotInCurrentFunc(b, bp->script_id, bp->line)) continue;
 
-    const uint8_t *p_end, *p, *p_prev;
-    int pc, pc_prev;
-
-    p_prev = p = b->debug.pc2line_buf;
-    p_end = p + b->debug.pc2line_len;
-    pc = 0;
+    const uint8_t *p = b->debug.pc2line_buf,
+                  *p_end = b->debug.pc2line_buf + b->debug.pc2line_len,
+                  *p_prev = b->debug.pc2line_buf;
+    int64_t line_col_num = b->debug.line_num, column = -1;
+    int32_t line = -1, pc = 0;
     while (p_prev < p_end) {
-      int32_t line = -1;
-      int64_t column = -1;
       p_prev = p;
-      GetPCLineColumn(ctx, p, pc, pc_prev, p_end, b, line, column);
+      GetPCLineColumn(ctx, p, p_end, pc, b, line_col_num, line, column);
+
       if (line < bp_line || line < b->debug.line_num - 1 ||
           (closed_line != -1 && line > closed_line) ||
           (line == bp_line && column < bp_column)) {
@@ -268,16 +247,15 @@ QJS_HIDE const uint8_t *FindBreakpointBytecode(LEPUSContext *ctx,
     if (NotInCurrentFunc(b, bp->script_id, bp->line)) {
       continue;
     }
-    const uint8_t *p_end, *p, *p_prev;
-    int pc, pc_prev;
-    p_prev = p = b->debug.pc2line_buf;
-    p_end = p + b->debug.pc2line_len;
-    pc = 0;
+    const uint8_t *p = b->debug.pc2line_buf,
+                  *p_end = b->debug.pc2line_buf + b->debug.pc2line_len,
+                  *p_prev = b->debug.pc2line_buf;
+    int64_t line_col_num = b->debug.line_num, column = -1;
+    int32_t line = -1, pc = 0, pc_prev;
     while (p_prev < p_end) {
-      int32_t line = -1;
-      int64_t column = -1;
       p_prev = p;
-      GetPCLineColumn(ctx, p, pc, pc_prev, p_end, b, line, column);
+      pc_prev = pc;
+      GetPCLineColumn(ctx, p, p_end, pc, b, line_col_num, line, column);
       if (line == -1 && column == -1) {
         continue;
       }
@@ -299,49 +277,53 @@ QJS_HIDE void GetPossibleBreakpointsByScriptId(
     int64_t end_line, int64_t end_col, LEPUSValue locations) {
   LEPUSDebuggerInfo *info = ctx->debugger_info;
   if (!info) return;
+  char str_script_id[40];
+  snprintf(str_script_id, (sizeof(str_script_id) / sizeof(str_script_id[0])),
+           "%d", script_id);
+  LEPUSValue script_id_val = LEPUS_NewString(ctx, str_script_id);
+  HandleScope func_scope(ctx, &script_id_val, HANDLE_TYPE_LEPUS_VALUE);
+  std::set<std::pair<int32_t, int64_t>> filters;
+
   int32_t id = 0;
   struct list_head *el;
   list_for_each(el, &ctx->debugger_info->bytecode_list) {
     LEPUSFunctionBytecode *b = list_entry(el, LEPUSFunctionBytecode, link);
-    if (NotInCurrentFunc(b, script_id, end_line)) {
+    if (!b->has_debug || (end_line != -1 && b->debug.line_num - 1 > end_line) ||
+        (b->script && b->script->id != script_id) ||
+        (b->debug.end_line_num && b->debug.end_line_num - 1 < start_line))
       continue;
-    }
-    const uint8_t *p_end, *p, *p_prev;
-    int pc, pc_prev;
-    p_prev = p = b->debug.pc2line_buf;
-    p_end = p + b->debug.pc2line_len;
-    pc = 0;
+
+    const uint8_t *p = b->debug.pc2line_buf,
+                  *p_end = b->debug.pc2line_buf + b->debug.pc2line_len,
+                  *p_prev = b->debug.pc2line_buf;
+    int64_t line_col_num = b->debug.line_num, column = -1;
+    int32_t line = -1, pc = 0;
     while (p_prev < p_end) {
-      int32_t line = -1;
-      int64_t column = -1;
       p_prev = p;
-      GetPCLineColumn(ctx, p, pc, pc_prev, p_end, b, line, column);
+      GetPCLineColumn(ctx, p, p_end, pc, b, line_col_num, line, column);
       if (line == -1 && column == -1) {
         continue;
       }
       if (InRange(line, column, start_line, start_col, end_line, end_col) &&
-          !LineColExist(ctx, locations, line, column)) {
-        char str_script_id[40];
-        snprintf(str_script_id,
-                 (sizeof(str_script_id) / sizeof(str_script_id[0])), "%d",
-                 script_id);
+          filters.find(std::pair(line, column)) == filters.end()) {
+        filters.insert(std::pair{line, column});
         auto *info = ctx->debugger_info;
         LEPUSValue props[3];
-        HandleScope block_scope{ctx};
-        block_scope.PushLEPUSValueArrayHandle(
-            props, sizeof(props) / sizeof(LEPUSValue));
-        props[0] = LEPUS_NewString(ctx, str_script_id);
+        props[0] = LEPUS_DupValue(ctx, script_id_val);
         props[1] = LEPUS_NewInt32(ctx, line);
         props[2] = LEPUS_NewInt64(ctx, column);
         LEPUSObject *p = DebuggerCreateObjFromShape(
             info, info->debugger_obj.bp_location,
             sizeof(props) / sizeof(LEPUSValue), props);
+        HandleScope block_scope{ctx};
         block_scope.PushHandle(p, HANDLE_TYPE_DIR_HEAP_OBJ);
         LEPUS_SetPropertyUint32(ctx, locations, id++,
                                 LEPUS_MKPTR(LEPUS_TAG_OBJECT, p));
       }
     }
   }
+  if (!ctx->gc_enable) LEPUS_FreeValue(ctx, script_id_val);
+  return;
 }
 
 QJS_HIDE const char *GetScriptURLByScriptId(LEPUSContext *ctx,

@@ -29113,6 +29113,7 @@ LEPUSValue js_create_function(LEPUSContext *ctx, JSFunctionDef *fd) {
     int64_t column = -1;
     ComputeLineCol(line_col, &line, &column);
     b->debug.column_num = column;
+    b->debug.end_line_num = fd->end_line_num;
 #endif
 
     b->debug.pc2line_buf = static_cast<uint8_t *>(lepus_realloc(
@@ -29830,6 +29831,8 @@ QJS_STATIC __exception int js_parse_function_decl2(
     /* consume the '}' */
     goto fail;
   }
+
+  fd->end_line_num = s->line_num;
 
   /* in case there is no return, add one */
   if (js_is_live_code(s)) {

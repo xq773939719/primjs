@@ -946,6 +946,7 @@ typedef struct LEPUSFunctionBytecode {
     int pc2line_len;
 #ifdef ENABLE_QUICKJS_DEBUGGER
     int64_t column_num;
+    int32_t end_line_num;
 #endif
     uint8_t *pc2line_buf;
     char *source;
@@ -2810,6 +2811,7 @@ typedef struct JSFunctionDef {
   /* pc2line table */
   JSAtom filename;
   int line_num;
+  int end_line_num;
 #ifdef ENABLE_QUICKJS_DEBUGGER
   int64_t column_num;
   LEPUSScriptSource *script;

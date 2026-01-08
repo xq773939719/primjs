@@ -41662,8 +41662,8 @@ static int make_json_val(LEPUSContext *ctx, LEPUSValue obj,
       if (p->len == 1) {
         val_incr();
         int64_t num = p->tab[0];
-        val->tag = JSON_TYPE_NUM | JSON_SUBTYPE_SINT;
-        val->uni.i64 = num;
+        val->tag = JSON_TYPE_NUM | JSON_SUBTYPE_REAL;
+        val->uni.f64 = (double)num;
         LEPUS_FreeValue(ctx, obj);
         return 0;
       } else if (p->len == 2 && p->tab[1] == 0) {
